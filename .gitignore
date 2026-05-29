@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-electron/
+venv/
+data/
+.env
+*.pyc
+__pycache__/
+.DS_Store
+*.log
+release/
+pyinstaller-dist/
+logs/
+models/
+build/

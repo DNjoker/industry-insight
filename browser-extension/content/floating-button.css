@@ -1,0 +1,72 @@
+/* Floating export button - injected into chat.deepseek.com */
+#ds-obsidian-export-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+  border: none;
+  border-radius: 24px;
+  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+  transition: transform 0.2s, box-shadow 0.2s;
+  user-select: none;
+}
+
+#ds-obsidian-export-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.5);
+}
+
+#ds-obsidian-export-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+#ds-obsidian-export-btn.ds-exporting {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+#ds-obsidian-export-btn .ds-btn-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+/* Success toast */
+#ds-obsidian-toast {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  z-index: 99999;
+  padding: 12px 20px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 12px;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  animation: ds-toast-in 0.3s ease-out;
+  max-width: 320px;
+}
+
+#ds-obsidian-toast.success {
+  border-left: 3px solid #22c55e;
+}
+
+#ds-obsidian-toast.error {
+  border-left: 3px solid #ef4444;
+}
+
+@keyframes ds-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}

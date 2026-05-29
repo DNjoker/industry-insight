@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=380, initial-scale=1.0">
+  <title>导出到 Obsidian</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <h1 class="header-title">
+        <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        导出到 Obsidian
+      </h1>
+      <span id="status-dot" class="status-dot offline" title="后端状态"></span>
+    </header>
+
+    <!-- Empty state: no messages extracted yet -->
+    <div id="empty-state" class="state-panel">
+      <div class="empty-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
+          <rect x="3" y="3" width="18" height="18" rx="3"/>
+          <line x1="8" y1="8" x2="16" y2="8"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+          <line x1="8" y1="16" x2="12" y2="16"/>
+        </svg>
+      </div>
+      <p class="empty-text">尚未提取对话</p>
+      <p class="empty-hint">在 DeepSeek 对话页面点击右下角的<br>"导出到 Obsidian" 按钮</p>
+      <button id="open-deepseek-btn" class="btn btn-secondary btn-sm">打开 DeepSeek Chat</button>
+    </div>
+
+    <!-- Preview state: has messages -->
+    <div id="preview-state" class="state-panel" style="display:none">
+      <!-- Message summary -->
+      <div class="summary-bar">
+        <span class="summary-count" id="msg-count">0 条消息</span>
+        <span class="summary-time" id="msg-time"></span>
+      </div>
+
+      <!-- Backend offline warning -->
+      <div id="backend-warning" class="warning-banner" style="display:none">
+        <span>后端未连接 — 请启动桌面工具</span>
+        <button id="retry-health-btn" class="btn btn-sm btn-ghost">重试</button>
+      </div>
+
+      <!-- Preview messages (first few) -->
+      <div class="preview-section">
+        <h3 class="section-label">对话预览</h3>
+        <div id="preview-messages" class="preview-messages"></div>
+      </div>
+
+      <!-- AI suggestions -->
+      <div class="form-section" id="ai-section">
+        <div class="section-header">
+          <h3 class="section-label">AI 建议</h3>
+          <button id="generate-btn" class="btn btn-primary btn-sm">生成</button>
+        </div>
+
+        <label class="field-label">标题</label>
+        <input type="text" id="title-input" class="input" placeholder="对话标题" maxlength="50">
+
+        <label class="field-label">标签（逗号分隔）</label>
+        <input type="text" id="tags-input" class="input" placeholder="电商, 推广, 抖音">
+
+        <label class="field-label">摘要</label>
+        <textarea id="abstract-input" class="input textarea" rows="3" placeholder="对话摘要..." maxlength="120"></textarea>
+
+        <div class="section-header" style="margin-top:12px">
+          <h3 class="section-label">AI 提炼</h3>
+          <button id="refine-btn" class="btn btn-secondary btn-sm">提炼</button>
+        </div>
+        <textarea id="refined-input" class="input textarea" rows="6" placeholder="点击"提炼"生成结构化知识笔记..."></textarea>
+        <p class="field-hint">提炼对话核心观点、结论和行动清单，入库时放在对话记录前面</p>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="actions">
+        <button id="save-btn" class="btn btn-primary btn-full" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          确认入库
+        </button>
+      </div>
+    </div>
+
+    <!-- Success state -->
+    <div id="success-state" class="state-panel" style="display:none">
+      <div class="success-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" width="48" height="48">
+          <circle cx="12" cy="12" r="10"/>
+          <polyline points="8 12 11 15 16 9"/>
+        </svg>
+      </div>
+      <p class="success-text">已保存到 Obsidian</p>
+      <div class="file-path-box" id="file-path"></div>
+      <button id="reset-btn" class="btn btn-secondary btn-full">再来一个</button>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display:none">
+      <div class="spinner"></div>
+      <p id="loading-text">处理中...</p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
