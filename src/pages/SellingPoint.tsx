@@ -61,6 +61,7 @@ interface AdditionalImage {
 }
 
 interface DesignBrief {
+  design_rationale?: string
   layout_style: string
   colors: string
   font_style: string
@@ -198,9 +199,11 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
   const [brandTone, setBrandTone] = useState('')
   const [reportPath, setReportPath] = useState('')
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(DEFAULT_PLATFORMS)
-  const [selectedContentPlatforms, setSelectedContentPlatforms] = useState<string[]>(['小红书', '抖音内容'])
+  const [selectedContentPlatform, setSelectedContentPlatform] = useState<string>('小红书')
+  const [mode, setMode] = useState<'ecommerce' | 'content'>('ecommerce')
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<Result | null>(null)
+  const [ecomResult, setEcomResult] = useState<Result | null>(null)
+  const [contentResult, setContentResult] = useState<Result | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
 
   useEffect(() => {
@@ -209,7 +212,13 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
     const timer = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - start) / 1000)), 1000)
     return () => clearInterval(timer)
   }, [loading])
-  const [activeTab, setActiveTab] = useState('淘宝')
+  const [ecomActiveTab, setEcomActiveTab] = useState('淘宝')
+  const [contentActiveTab, setContentActiveTab] = useState('小红书')
+
+  // Derived state for current mode
+  const activeResult = mode === 'ecommerce' ? ecomResult : contentResult
+  const currentActiveTab = mode === 'ecommerce' ? ecomActiveTab : contentActiveTab
+  const setCurrentActiveTab = mode === 'ecommerce' ? setEcomActiveTab : setContentActiveTab
   const [copiedText, setCopiedText] = useState('')
   const [customSystemPrompt, setCustomSystemPrompt] = useState('')
   const [showPromptEditor, setShowPromptEditor] = useState(false)
@@ -385,36 +394,70 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
     input.click()
   }
 
-  // Restore auto-saved result on mount
+  // Restore auto-saved results on mount
   useEffect(() => {
+    const restore = (key: string, setResult: (r: Result) => void, setActiveTab: (t: string) => void, setPlatforms?: (p: string[]) => void) => {
+      try {
+        const saved = localStorage.getItem(key)
+        if (saved) {
+          const data = JSON.parse(saved)
+          if (data.result) setResult(data.result)
+          if (data.activeTab) setActiveTab(data.activeTab)
+          if (setPlatforms && data.platforms) setPlatforms(data.platforms)
+        }
+      } catch { /* ignore */ }
+    }
+    restore('selling-point-autosave-ecom', setEcomResult, setEcomActiveTab, setSelectedPlatforms)
+    restore('selling-point-autosave-content', setContentResult, setContentActiveTab)
+    // Restore content platform selection (handle old array format)
     try {
-      const saved = localStorage.getItem('selling-point-autosave')
+      const saved = localStorage.getItem('selling-point-autosave-content')
       if (saved) {
         const data = JSON.parse(saved)
-        if (data.result) setResult(data.result)
+        if (data.platforms) {
+          const p = Array.isArray(data.platforms) ? data.platforms[0] : data.platforms
+          if (p && CONTENT_PLATFORMS.some(cp => cp.key === p)) setSelectedContentPlatform(p)
+        }
+      }
+    } catch { /* ignore */ }
+    // Restore form fields (shared, from either key)
+    try {
+      const saved = localStorage.getItem('selling-point-autosave-ecom') || localStorage.getItem('selling-point-autosave-content')
+      if (saved) {
+        const data = JSON.parse(saved)
         if (data.productName) setProductName(data.productName)
         if (data.category) setCategory(data.category)
         if (data.keyFeatures) setKeyFeatures(data.keyFeatures)
         if (data.targetAudience) setTargetAudience(data.targetAudience)
         if (data.priceRange) setPriceRange(data.priceRange)
         if (data.priceTier) setPriceTier(data.priceTier)
-        if (data.platforms) setSelectedPlatforms(data.platforms)
-        if (data.activeTab) setActiveTab(data.activeTab)
       }
     } catch { /* ignore */ }
   }, [])
 
-  // Auto-save result whenever it changes
+  // Auto-save ecom result whenever it changes
   useEffect(() => {
-    if (result && result.platforms) {
-      localStorage.setItem('selling-point-autosave', JSON.stringify({
-        result,
+    if (ecomResult && ecomResult.platforms) {
+      localStorage.setItem('selling-point-autosave-ecom', JSON.stringify({
+        result: ecomResult,
         productName, category, keyFeatures, targetAudience, priceRange, priceTier,
-        platforms: selectedPlatforms, activeTab,
+        platforms: selectedPlatforms, activeTab: ecomActiveTab,
         savedAt: new Date().toISOString(),
       }))
     }
-  }, [result])
+  }, [ecomResult])
+
+  // Auto-save content result whenever it changes
+  useEffect(() => {
+    if (contentResult && contentResult.content_assets) {
+      localStorage.setItem('selling-point-autosave-content', JSON.stringify({
+        result: contentResult,
+        productName, category, keyFeatures, targetAudience, priceRange, priceTier,
+        platforms: [selectedContentPlatform], activeTab: contentActiveTab,
+        savedAt: new Date().toISOString(),
+      }))
+    }
+  }, [contentResult])
 
   // Auto-fill from industry scan report
   useEffect(() => {
@@ -430,10 +473,8 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
     )
   }
 
-  const toggleContentPlatform = (p: string) => {
-    setSelectedContentPlatforms(prev =>
-      prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
-    )
+  const handleContentPlatformSelect = (p: string) => {
+    setSelectedContentPlatform(p)
   }
 
   const buildProductSummary = (): string => {
@@ -449,13 +490,23 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
   const handleGenerate = async () => {
     if (!productName || !keyFeatures) return
     setLoading(true)
-    setResult(null)
-    setRefinementRound(0)
-    setRefinementHistory([])
+    // Reset current mode's state
+    if (mode === 'ecommerce') {
+      setEcomResult(null)
+      setEcomRefinementRound(0)
+      setEcomRefinementHistory([])
+      setEcomBestResult(null)
+      setEcomBestScore(null)
+      setEcomBestRound(0)
+    } else {
+      setContentResult(null)
+      setContentRefinementRound(0)
+      setContentRefinementHistory([])
+      setContentBestResult({})
+      setContentBestScore({})
+      setContentBestRound({})
+    }
     setQualityOpen(false)
-    setBestResult(null)
-    setBestScore(null)
-    setBestRound(0)
 
     try {
       const baseUrl = await getBaseUrl()
@@ -476,62 +527,45 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
         custom_system_prompt: customSystemPrompt !== defaultPrompt ? customSystemPrompt : '',
       }
 
-      const hasEcom = selectedPlatforms.length > 0
-      const hasContent = selectedContentPlatforms.length > 0
-
-      // Build parallel requests: 1 e-commerce + N content (one per platform)
-      const requests: Promise<Response>[] = []
-      if (hasEcom) {
-        requests.push(fetch(`${baseUrl}/api/selling-point`, {
+      if (mode === 'ecommerce') {
+        // ── E-commerce: single request for selected platforms ──
+        const r = await fetch(`${baseUrl}/api/selling-point`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...bodyBase, platforms: selectedPlatforms, content_platforms: [] }),
-        }))
-      }
-      if (hasContent) {
-        for (const cp of selectedContentPlatforms) {
-          requests.push(fetch(`${baseUrl}/api/selling-point`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...bodyBase, platforms: [], content_platforms: [cp] }),
-          }))
+        })
+        const data: Result = await r.json()
+        if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`)
+        setEcomResult(data)
+        if (data.platforms) {
+          const keys = Object.keys(data.platforms)
+          if (keys.length > 0) setEcomActiveTab(keys[0])
         }
-      }
-
-      const responses = await Promise.all(requests)
-      const results: Result[] = await Promise.all(responses.map(r => r.ok ? r.json() : Promise.resolve({ error: `HTTP ${r.status}` })))
-
-      // Extract results
-      const ecomResult = hasEcom ? results[0] : null
-      const contentResults = hasContent ? results.slice(hasEcom ? 1 : 0) : []
-
-      // Check for errors — e-commerce failure is fatal, content failures are collected
-      if (ecomResult?.error) throw new Error(ecomResult.error)
-      const contentErrors: string[] = []
-      for (let i = 0; i < contentResults.length; i++) {
-        if (contentResults[i]?.error) {
-          const platform = selectedContentPlatforms[i] || `content_${i}`
-          contentErrors.push(`${platform}: ${contentResults[i].error}`)
+        const score = data.quality_review?.overall_score ?? null
+        if (score != null) {
+          setEcomBestResult(data)
+          setEcomBestScore(score)
+          setEcomBestRound(0)
         }
-      }
-      // Only throw if ALL content requests failed
-      if (contentErrors.length > 0 && contentErrors.length === contentResults.length && !hasEcom) {
-        throw new Error(contentErrors.join('; '))
-      }
+      } else {
+        // ── Content: single platform request ──
+        const cp = selectedContentPlatform
+        const resp = await fetch(`${baseUrl}/api/selling-point`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...bodyBase, platforms: [], content_platforms: [cp] }),
+        })
+        const cr: Result = await resp.json()
+        if (!resp.ok || cr.error) throw new Error(cr.error || `HTTP ${resp.status}`)
 
-      // Merge content_assets from all content platform responses
-      let mergedContentAssets: Record<string, any> = {}
-      const contentReviews: Record<string, QualityReview> = {}
-      for (let i = 0; i < contentResults.length; i++) {
-        const cr = contentResults[i]
-        const srcPlatform = selectedContentPlatforms[i] || `content_${i}`
+        let mergedContentAssets: Record<string, any> = {}
+        const contentReviews: Record<string, QualityReview> = {}
         if (cr?.content_assets) {
           const ca = cr.content_assets
           const caKeys = Object.keys(ca)
           const isFlat = caKeys.some(k => k === 'social_post' || k === 'video_script')
           if (isFlat) {
-            // Normalize flat format to per-platform: {"social_post": {...}} → {"小红书": {"social_post": {...}}}
-            mergedContentAssets[srcPlatform] = ca
+            mergedContentAssets[cp] = ca
           } else {
             Object.assign(mergedContentAssets, ca)
           }
@@ -539,57 +573,32 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
         if (cr?.quality_review) {
           const caKeys = cr.content_assets ? Object.keys(cr.content_assets) : []
           const isFlat = caKeys.some(k => k === 'social_post' || k === 'video_script')
-          contentReviews[isFlat ? srcPlatform : (caKeys[0] || srcPlatform)] = cr.quality_review
+          contentReviews[isFlat ? cp : (caKeys[0] || cp)] = cr.quality_review
         }
-      }
-      if (Object.keys(mergedContentAssets).length === 0 && ecomResult?.content_assets) {
-        mergedContentAssets = ecomResult.content_assets
-      }
-      // Surface content errors as a warning in the result
-      const contentWarnings = contentErrors.length > 0 ? contentErrors : undefined
 
-      // Build merged result
-      const merged: Result = {
-        ...(ecomResult || {}),
-        content_assets: mergedContentAssets,
-        content_reviews: Object.keys(contentReviews).length > 0 ? contentReviews : undefined,
-        content_warnings: contentWarnings,
-      }
-
-      // Sum token usage from ALL requests
-      let totalPrompt = 0, totalCompletion = 0, totalTokens = 0
-      for (const r of results) {
-        if (r?.token_usage) {
-          totalPrompt += r.token_usage.prompt_tokens || 0
-          totalCompletion += r.token_usage.completion_tokens || 0
-          totalTokens += r.token_usage.total_tokens || 0
+        const merged: Result = {
+          content_assets: mergedContentAssets,
+          content_reviews: Object.keys(contentReviews).length > 0 ? contentReviews : undefined,
+          token_usage: cr?.token_usage,
         }
-      }
-      if (totalTokens > 0) {
-        merged.token_usage = { prompt_tokens: totalPrompt, completion_tokens: totalCompletion, total_tokens: totalTokens }
-      }
-
-      setResult(merged)
-      if (merged.platforms) {
-        const keys = Object.keys(merged.platforms)
-        if (keys.length > 0) setActiveTab(keys[0])
-        else if (merged.content_assets) {
-          const cKeys = Object.keys(merged.content_assets)
-          if (cKeys.length > 0) setActiveTab(cKeys[0])
+        setContentResult(merged)
+        const cKeys = Object.keys(mergedContentAssets)
+        if (cKeys.length > 0) setContentActiveTab(cKeys[0])
+        // Track best for this platform
+        const firstReview = cKeys.length > 0 ? contentReviews[cKeys[0]] : null
+        const score = firstReview?.overall_score ?? null
+        if (score != null) {
+          setContentBestResult(prev => ({ ...prev, [cp]: merged }))
+          setContentBestScore(prev => ({ ...prev, [cp]: score }))
+          setContentBestRound(prev => ({ ...prev, [cp]: 0 }))
         }
-      } else if (merged.content_assets) {
-        const cKeys = Object.keys(merged.content_assets)
-        if (cKeys.length > 0) setActiveTab(cKeys[0])
-      }
-      // Track initial best version
-      const score = merged.quality_review?.overall_score ?? null
-      if (score != null) {
-        setBestResult(merged)
-        setBestScore(score)
-        setBestRound(0)
       }
     } catch (e: any) {
-      setResult({ error: e.message || '请求失败' })
+      if (mode === 'ecommerce') {
+        setEcomResult({ error: e.message || '请求失败' })
+      } else {
+        setContentResult({ error: e.message || '请求失败' })
+      }
     } finally {
       setLoading(false)
     }
@@ -599,12 +608,30 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
   const [savedPath, setSavedPath] = useState('')
   const [savedRawPath, setSavedRawPath] = useState('')
   const [compareMode, setCompareMode] = useState(false)
-  const [refinementRound, setRefinementRound] = useState(0)
-  const [refinementHistory, setRefinementHistory] = useState<Array<{round: number; score: number | null; summary: string}>>([])
+  const [ecomRefinementRound, setEcomRefinementRound] = useState(0)
+  const [contentRefinementRound, setContentRefinementRound] = useState(0)
+  const [ecomRefinementHistory, setEcomRefinementHistory] = useState<Array<{round: number; score: number | null; summary: string}>>([])
+  const [contentRefinementHistory, setContentRefinementHistory] = useState<Array<{round: number; score: number | null; summary: string}>>([])
   const [qualityOpen, setQualityOpen] = useState(false)
-  const [bestResult, setBestResult] = useState<Result | null>(null)
-  const [bestScore, setBestScore] = useState<number | null>(null)
-  const [bestRound, setBestRound] = useState(0)
+  const [ecomBestResult, setEcomBestResult] = useState<Result | null>(null)
+  const [ecomBestScore, setEcomBestScore] = useState<number | null>(null)
+  const [ecomBestRound, setEcomBestRound] = useState(0)
+  const [contentBestResult, setContentBestResult] = useState<Record<string, Result | null>>({})
+  const [contentBestScore, setContentBestScore] = useState<Record<string, number | null>>({})
+  const [contentBestRound, setContentBestRound] = useState<Record<string, number>>({})
+
+  // Derived per-mode state
+  const refinementRound = mode === 'ecommerce' ? ecomRefinementRound : contentRefinementRound
+  const refinementHistory = mode === 'ecommerce' ? ecomRefinementHistory : contentRefinementHistory
+  const bestResult = mode === 'ecommerce' ? ecomBestResult : (contentBestResult[currentActiveTab] ?? null)
+  const bestScore = mode === 'ecommerce' ? ecomBestScore : (contentBestScore[currentActiveTab] ?? null)
+  const bestRound = mode === 'ecommerce' ? ecomBestRound : (contentBestRound[currentActiveTab] ?? 0)
+
+  // Derived quality review: top-level for ecom, per-tab for content
+  const activeQualityReview: QualityReview | undefined =
+    mode === 'ecommerce'
+      ? ecomResult?.quality_review
+      : contentResult?.content_reviews?.[contentActiveTab]
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -614,7 +641,7 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
   }
 
   const handleRegenerate = async (section: string) => {
-    if (!result?.platforms || loading) return
+    if (!ecomResult?.platforms || loading || mode !== 'ecommerce') return
     setLoading(true)
     try {
       const baseUrl = await getBaseUrl()
@@ -635,158 +662,137 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
           brand_tone: brandTone,
           report_path: reportPath,
           platforms: selectedPlatforms,
-          content_platforms: selectedContentPlatforms,
+          content_platforms: [],
           template: selectedTemplate,
           custom_system_prompt: customSystemPrompt !== defaultPrompt ? customSystemPrompt : '',
           regenerate_section: section,
-          existing_result: result,
+          existing_result: ecomResult,
         }),
       })
       if (resp.ok) {
         const data: Result = await resp.json()
-        setResult(data)
+        setEcomResult(data)
       }
     } catch (e: any) {
-      setResult({ error: e.message || '局部重生失败' })
+      setEcomResult({ error: e.message || '局部重生失败' })
     } finally {
       setLoading(false)
     }
   }
 
   const handleRefine = async () => {
-    if (!result?.quality_review?.issues || loading) return
-    const issues = result.quality_review.issues
+    // Guard: need quality review for the active mode
+    if (mode === 'ecommerce') {
+      if (!ecomResult?.quality_review?.issues || loading) return
+    } else {
+      const tabReview = contentResult?.content_reviews?.[contentActiveTab]
+      if (!tabReview?.issues || loading) return
+    }
     setLoading(true)
-    const prevScore = result.quality_review.overall_score ?? null
-    const prevSummary = result.quality_review.summary || ''
-    try {
-      const baseUrl = await getBaseUrl()
-      const bodyBase = {
-        product_name: productName,
-        category,
-        key_features: keyFeatures,
-        target_audience: targetAudience,
-        price_range: priceRange,
-        price_tier: priceTier,
-        pain_points: painPoints,
-        my_product_advantage: myProductAdvantage,
-        my_product_weakness: myProductWeakness,
-        competitor_context: competitorContext,
-        brand_tone: brandTone,
-        report_path: reportPath,
-        template: selectedTemplate,
-        custom_system_prompt: customSystemPrompt !== defaultPrompt ? customSystemPrompt : '',
-        refine_issues: issues,
-      }
 
-      const hasEcom = selectedPlatforms.length > 0
-      const hasContent = selectedContentPlatforms.length > 0 && result.content_assets && Object.keys(result.content_assets).length > 0
-
-      // Refine e-commerce and content in parallel (1 + N requests)
-      const requests: Promise<Response>[] = []
-      if (hasEcom) {
-        requests.push(fetch(`${baseUrl}/api/selling-point`, {
+    if (mode === 'ecommerce') {
+      const issues = ecomResult!.quality_review!.issues
+      const prevScore = ecomResult!.quality_review!.overall_score ?? null
+      const prevSummary = ecomResult!.quality_review!.summary || ''
+      try {
+        const baseUrl = await getBaseUrl()
+        const r = await fetch(`${baseUrl}/api/selling-point`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...bodyBase, platforms: selectedPlatforms, content_platforms: [], existing_result: result }),
-        }))
-      }
-      if (hasContent) {
-        for (const cp of selectedContentPlatforms) {
-          requests.push(fetch(`${baseUrl}/api/selling-point`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...bodyBase, platforms: [], content_platforms: [cp], existing_result: result }),
-          }))
+          body: JSON.stringify({
+            product_name: productName, category, key_features: keyFeatures,
+            target_audience: targetAudience, price_range: priceRange,
+            price_tier: priceTier, pain_points: painPoints,
+            my_product_advantage: myProductAdvantage, my_product_weakness: myProductWeakness,
+            competitor_context: competitorContext, brand_tone: brandTone,
+            report_path: reportPath, template: selectedTemplate,
+            custom_system_prompt: customSystemPrompt !== defaultPrompt ? customSystemPrompt : '',
+            platforms: selectedPlatforms, content_platforms: [],
+            refine_issues: issues, existing_result: ecomResult,
+          }),
+        })
+        const data: Result = await r.json()
+        if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`)
+        setEcomResult(data)
+        const newRound = ecomRefinementRound + 1
+        setEcomRefinementRound(newRound)
+        setEcomRefinementHistory(prev => [...prev, { round: newRound, score: prevScore, summary: prevSummary }])
+        setQualityOpen(true)
+        const newScore = data.quality_review?.overall_score ?? null
+        if (newScore != null && (ecomBestScore == null || newScore > ecomBestScore)) {
+          setEcomBestResult(data); setEcomBestScore(newScore); setEcomBestRound(newRound)
         }
+      } catch (e: any) {
+        setEcomResult({ error: e.message || '优化失败' })
       }
+    } else {
+      // Content mode: refine only the active tab's platform
+      const tabReview = contentResult!.content_reviews![contentActiveTab]
+      const issues = tabReview.issues
+      const prevScore = tabReview.overall_score ?? null
+      const prevSummary = tabReview.summary || ''
+      try {
+        const baseUrl = await getBaseUrl()
+        const r = await fetch(`${baseUrl}/api/selling-point`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            product_name: productName, category, key_features: keyFeatures,
+            target_audience: targetAudience, price_range: priceRange,
+            price_tier: priceTier, pain_points: painPoints,
+            my_product_advantage: myProductAdvantage, my_product_weakness: myProductWeakness,
+            competitor_context: competitorContext, brand_tone: brandTone,
+            report_path: reportPath, template: selectedTemplate,
+            custom_system_prompt: customSystemPrompt !== defaultPrompt ? customSystemPrompt : '',
+            platforms: [], content_platforms: [contentActiveTab],
+            refine_issues: issues, existing_result: contentResult,
+          }),
+        })
+        const data: Result = await r.json()
+        if (!r.ok || data.error) throw new Error(data.error || `HTTP ${r.status}`)
 
-      const responses = await Promise.all(requests)
-      const results: Result[] = await Promise.all(responses.map(r => r.ok ? r.json() : Promise.resolve({ error: `HTTP ${r.status}` })))
-
-      const ecomResult = hasEcom ? results[0] : null
-      const contentResults = hasContent ? results.slice(hasEcom ? 1 : 0) : []
-
-      if (ecomResult?.error) throw new Error(ecomResult.error)
-      const contentErrors: string[] = []
-      for (let i = 0; i < contentResults.length; i++) {
-        if (contentResults[i]?.error) {
-          const platform = selectedContentPlatforms[i] || `content_${i}`
-          contentErrors.push(`${platform}: ${contentResults[i].error}`)
-        }
-      }
-
-      // Merge content_assets
-      let mergedContentAssets: Record<string, any> = {}
-      const contentReviews: Record<string, QualityReview> = {}
-      for (let i = 0; i < contentResults.length; i++) {
-        const cr = contentResults[i]
-        const srcPlatform = selectedContentPlatforms[i] || `content_${i}`
-        if (cr?.content_assets) {
-          const ca = cr.content_assets
+        // Merge refined content back
+        const newContentAssets = { ...(contentResult?.content_assets || {}) }
+        const newContentReviews = { ...(contentResult?.content_reviews || {}) }
+        if (data.content_assets) {
+          const ca = data.content_assets
           const caKeys = Object.keys(ca)
           const isFlat = caKeys.some(k => k === 'social_post' || k === 'video_script')
           if (isFlat) {
-            mergedContentAssets[srcPlatform] = ca
+            newContentAssets[contentActiveTab] = ca
           } else {
-            Object.assign(mergedContentAssets, ca)
+            Object.assign(newContentAssets, ca)
           }
         }
-        if (cr?.quality_review) {
-          const caKeys = cr.content_assets ? Object.keys(cr.content_assets) : []
-          const isFlat = caKeys.some(k => k === 'social_post' || k === 'video_script')
-          contentReviews[isFlat ? srcPlatform : (caKeys[0] || srcPlatform)] = cr.quality_review
+        if (data.quality_review) {
+          newContentReviews[contentActiveTab] = data.quality_review
         }
-      }
-      if (Object.keys(mergedContentAssets).length === 0) {
-        mergedContentAssets = result.content_assets || {}
-      }
-      const contentWarnings = contentErrors.length > 0 ? contentErrors : undefined
-
-      const merged: Result = {
-        ...(ecomResult || {}),
-        content_assets: mergedContentAssets,
-        content_reviews: Object.keys(contentReviews).length > 0 ? contentReviews : (result.content_reviews || undefined),
-        content_warnings: contentWarnings || result.content_warnings || undefined,
-      }
-      // Sum token usage from ALL requests
-      let totalPrompt = 0, totalCompletion = 0, totalTokens = 0
-      for (const r of results) {
-        if (r?.token_usage) {
-          totalPrompt += r.token_usage.prompt_tokens || 0
-          totalCompletion += r.token_usage.completion_tokens || 0
-          totalTokens += r.token_usage.total_tokens || 0
+        const merged: Result = {
+          content_assets: newContentAssets,
+          content_reviews: newContentReviews,
+          token_usage: data.token_usage,
         }
+        setContentResult(merged)
+        const newRound = contentRefinementRound + 1
+        setContentRefinementRound(newRound)
+        setContentRefinementHistory(prev => [...prev, { round: newRound, score: prevScore, summary: prevSummary }])
+        setQualityOpen(true)
+        const newScore = data.quality_review?.overall_score ?? null
+        const platformPrevBest = contentBestScore[contentActiveTab] ?? null
+        if (newScore != null && (platformPrevBest == null || newScore > platformPrevBest)) {
+          setContentBestResult(prev => ({ ...prev, [contentActiveTab]: merged }))
+          setContentBestScore(prev => ({ ...prev, [contentActiveTab]: newScore }))
+          setContentBestRound(prev => ({ ...prev, [contentActiveTab]: newRound }))
+        }
+      } catch (e: any) {
+        setContentResult({ error: e.message || '优化失败' })
       }
-      if (totalTokens > 0) {
-        merged.token_usage = { prompt_tokens: totalPrompt, completion_tokens: totalCompletion, total_tokens: totalTokens }
-      }
-
-      setResult(merged)
-      const newRound = refinementRound + 1
-      setRefinementRound(newRound)
-      setRefinementHistory(prev => [...prev, {
-        round: newRound,
-        score: prevScore,
-        summary: prevSummary,
-      }])
-      setQualityOpen(true)
-      // Track best version
-      const newScore = merged.quality_review?.overall_score ?? null
-      if (newScore != null && (bestScore == null || newScore > bestScore)) {
-        setBestResult(merged)
-        setBestScore(newScore)
-        setBestRound(newRound)
-      }
-    } catch (e: any) {
-      setResult({ error: e.message || '优化失败' })
-    } finally {
-      setLoading(false)
     }
+    setLoading(false)
   }
 
   const handleSave = async () => {
-    if (!result?.platforms || saving) return
+    if (!ecomResult?.platforms || saving) return
     setSaving(true)
     try {
       const baseUrl = await getBaseUrl()
@@ -796,15 +802,15 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
         body: JSON.stringify({
           product_name: productName,
           category,
-          platforms: Object.keys(result.platforms),
-          data: result,
+          platforms: Object.keys(ecomResult.platforms),
+          data: ecomResult,
         }),
       })
       if (resp.ok) {
         const data = await resp.json()
         setSavedPath(data.path)
         if (data.raw_path) setSavedRawPath(data.raw_path)
-        localStorage.removeItem('selling-point-autosave')
+        localStorage.removeItem('selling-point-autosave-ecom')
         setTimeout(() => { setSavedPath(''); setSavedRawPath('') }, 5000)
       }
     } catch (e) {
@@ -821,6 +827,26 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
         <div className="p-4 border-b border-gray-200 bg-white">
           <h2 className="text-lg font-bold text-gray-800">卖点整理</h2>
           <p className="text-xs text-gray-500 mt-1">填入产品信息，一键生成多平台主图文案和详情页结构</p>
+
+          {/* Mode Toggle */}
+          <div className="flex mt-3 rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => setMode('ecommerce')}
+              className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+                mode === 'ecommerce' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              电商平台
+            </button>
+            <button
+              onClick={() => setMode('content')}
+              className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+                mode === 'content' ? 'bg-purple-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+              }`}
+            >
+              内容平台
+            </button>
+          </div>
 
           {/* Report link indicator */}
           {reportPath ? (
@@ -1041,44 +1067,48 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
             </div>
           </details>
 
-          <div>
-            <label className="text-xs font-medium text-gray-600 block mb-1">目标平台</label>
-            <div className="flex flex-wrap gap-1.5">
-              {DEFAULT_PLATFORMS.map(p => (
-                <button
-                  key={p}
-                  onClick={() => togglePlatform(p)}
-                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                    selectedPlatforms.includes(p)
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
+          {mode === 'ecommerce' && (
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">目标电商平台</label>
+              <div className="flex flex-wrap gap-1.5">
+                {DEFAULT_PLATFORMS.map(p => (
+                  <button
+                    key={p}
+                    onClick={() => togglePlatform(p)}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      selectedPlatforms.includes(p)
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="mt-3">
-            <label className="text-xs font-medium text-gray-600 block mb-1">内容平台（图文/视频）</label>
-            <div className="flex flex-wrap gap-1.5">
-              {CONTENT_PLATFORMS.map(p => (
-                <button
-                  key={p.key}
-                  onClick={() => toggleContentPlatform(p.key)}
-                  className={`px-3 py-1 text-xs rounded-full border transition-colors ${
-                    selectedContentPlatforms.includes(p.key)
-                      ? 'bg-purple-600 text-white border-purple-600'
-                      : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'
-                  }`}
-                  title={p.desc}
-                >
-                  {p.label}
-                </button>
-              ))}
+          {mode === 'content' && (
+            <div>
+              <label className="text-xs font-medium text-gray-600 block mb-1">目标内容平台（单选）</label>
+              <div className="flex flex-wrap gap-1.5">
+                {CONTENT_PLATFORMS.map(p => (
+                  <button
+                    key={p.key}
+                    onClick={() => handleContentPlatformSelect(p.key)}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      selectedContentPlatform === p.key
+                        ? 'bg-purple-600 text-white border-purple-600'
+                        : 'bg-white text-gray-500 border-gray-300 hover:border-gray-400'
+                    }`}
+                    title={p.desc}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Prompt Editor */}
@@ -1208,11 +1238,9 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
               <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-3" />
               <p className="text-gray-600 text-sm font-medium">正在生成 {buildProductSummary()} 的文案</p>
               <p className="text-gray-400 text-xs mt-1">
-                {selectedPlatforms.length > 0 && selectedContentPlatforms.length > 0
-                  ? `电商（${selectedPlatforms.length}平台）+ 内容（${selectedContentPlatforms.length}平台）并行生成中`
-                  : selectedPlatforms.length > 0
-                    ? `电商平台文案生成中（${selectedPlatforms.length}个）`
-                    : `内容平台资产生成中（${selectedContentPlatforms.length}个）`}
+                {mode === 'ecommerce'
+                  ? `电商平台文案生成中（${selectedPlatforms.length}个）`
+                  : `内容平台资产生成中（${selectedContentPlatform}）`}
               </p>
               <p className="text-gray-400 text-xs mt-1">
                 已耗时 {Math.floor(elapsedSeconds / 60)}分{elapsedSeconds % 60}秒
@@ -1222,39 +1250,39 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
           </div>
         )}
 
-        {!loading && result?.error && (
+        {!loading && activeResult?.error && (
           <div className="flex items-center justify-center h-full">
             <div className="text-center text-red-500">
               <p className="text-lg mb-2">生成失败</p>
-              <p className="text-sm">{result.error}</p>
-              {result.raw && (
+              <p className="text-sm">{activeResult.error}</p>
+              {activeResult.raw && (
                 <details className="mt-3 text-left">
                   <summary className="text-xs cursor-pointer">查看原始返回</summary>
-                  <pre className="text-xs mt-1 max-w-lg overflow-auto bg-gray-100 p-2 rounded text-left">{result.raw}</pre>
+                  <pre className="text-xs mt-1 max-w-lg overflow-auto bg-gray-100 p-2 rounded text-left">{activeResult.raw}</pre>
                 </details>
               )}
             </div>
           </div>
         )}
 
-        {!loading && result?.platforms && (
+        {!loading && ((mode === 'ecommerce' && ecomResult?.platforms) || (mode === 'content' && contentResult?.content_assets)) && (
           <>
             {/* Top bar: save + keywords */}
             <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex items-start justify-between gap-4 flex-wrap">
               <div className="flex-1 min-w-0">
-                {result.keywords && result.keywords.length > 0 && (
+                {mode === 'ecommerce' && ecomResult?.keywords && ecomResult.keywords.length > 0 && (
                   <>
                     <div className="flex items-center gap-2 mb-1.5">
                       <span className="text-xs font-medium text-gray-500">投放关键词</span>
                       <button
-                        onClick={() => copyToClipboard(result.keywords!.join('、'), 'keywords')}
+                        onClick={() => copyToClipboard(ecomResult!.keywords!.join('、'), 'keywords')}
                         className="text-xs text-blue-500 hover:text-blue-700"
                       >
                         {copiedText === 'keywords' ? '已复制' : '复制全部'}
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-1">
-                      {result.keywords.map((kw, i) => (
+                      {ecomResult!.keywords.map((kw, i) => (
                         <span key={i} className="px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded-full border border-blue-200">
                           {kw}
                         </span>
@@ -1272,10 +1300,15 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
               </button>
               <button
                 onClick={() => {
-                  setResult(null)
+                  if (mode === 'ecommerce') {
+                    setEcomResult(null)
+                    localStorage.removeItem('selling-point-autosave-ecom')
+                  } else {
+                    setContentResult(null)
+                    localStorage.removeItem('selling-point-autosave-content')
+                  }
                   setSavedPath('')
                   setSavedRawPath('')
-                  localStorage.removeItem('selling-point-autosave')
                 }}
                 className="px-3 py-1.5 text-xs rounded-md font-medium transition-colors bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 shrink-0"
                 title="清除当前结果"
@@ -1293,35 +1326,35 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
             )}
 
             {/* FAB Platform Notes */}
-            {result.fab_platform_notes && (
+            {mode === 'ecommerce' && ecomResult?.fab_platform_notes && (
               <div className="px-6 py-3 bg-amber-50 border-b border-amber-200">
                 <p className="text-xs font-medium text-amber-800 mb-1">跨平台FAB差异说明</p>
-                <p className="text-sm text-amber-900 leading-relaxed">{result.fab_platform_notes}</p>
+                <p className="text-sm text-amber-900 leading-relaxed">{ecomResult.fab_platform_notes}</p>
               </div>
             )}
 
             {/* Quality Review */}
-            {result.quality_review && (
+            {activeQualityReview && (
               <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
                 <details className="group" open={qualityOpen} onToggle={(e) => setQualityOpen(e.currentTarget.open)}>
                   <summary className="flex items-center gap-2 cursor-pointer select-none">
                     <span className={`px-2 py-0.5 text-xs font-bold rounded ${
-                      (result.quality_review.overall_score ?? 100) >= 80 ? 'bg-green-100 text-green-700' :
-                      (result.quality_review.overall_score ?? 100) >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                      (activeQualityReview.overall_score ?? 100) >= 80 ? 'bg-green-100 text-green-700' :
+                      (activeQualityReview.overall_score ?? 100) >= 60 ? 'bg-yellow-100 text-yellow-700' :
                       'bg-red-100 text-red-700'
                     }`}>
-                      {result.quality_review.overall_score != null ? `${result.quality_review.overall_score}分` : 'N/A'}
+                      {activeQualityReview.overall_score != null ? `${activeQualityReview.overall_score}分` : 'N/A'}
                     </span>
-                    <span className="text-xs text-gray-600">{result.quality_review.summary || 'AI 质量自检报告'}</span>
+                    <span className="text-xs text-gray-600">{activeQualityReview.summary || 'AI 质量自检报告'}</span>
                     {refinementRound > 0 && (
                       <span className="text-xs text-blue-500 font-medium">已优化 {refinementRound} 轮</span>
                     )}
-                    {bestScore != null && result.quality_review?.overall_score === bestScore && (
+                    {bestScore != null && activeQualityReview?.overall_score === bestScore && (
                       <span className="text-xs text-green-600 font-medium">★ 最佳</span>
                     )}
-                    {result.token_usage && (
-                      <span className="text-xs text-gray-400 ml-auto mr-2" title={`提示词 ${result.token_usage.prompt_tokens.toLocaleString()} token · 生成 ${result.token_usage.completion_tokens.toLocaleString()} token`}>
-                        {result.token_usage.total_tokens.toLocaleString()} token
+                    {activeResult && activeResult.token_usage && (
+                      <span className="text-xs text-gray-400 ml-auto mr-2" title={`提示词 ${activeResult.token_usage.prompt_tokens.toLocaleString()} token · 生成 ${activeResult.token_usage.completion_tokens.toLocaleString()} token`}>
+                        {activeResult.token_usage.total_tokens.toLocaleString()} token
                       </span>
                     )}
                     <span className="text-xs text-gray-400 ml-auto group-open:hidden">展开</span>
@@ -1339,20 +1372,20 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
                             </span>
                           ))}
                           <span className="text-xs text-blue-800 font-medium">
-                            → 当前：{result.quality_review?.overall_score != null ? `${result.quality_review.overall_score}分` : 'N/A'}
-                            {refinementHistory.length > 0 && result.quality_review?.overall_score != null && refinementHistory[0].score != null && (
-                              <span className={result.quality_review.overall_score - refinementHistory[0].score >= 0 ? 'text-green-600' : 'text-red-600'}>
-                                {' '}({result.quality_review.overall_score - refinementHistory[0].score >= 0 ? '+' : ''}{result.quality_review.overall_score - refinementHistory[0].score})
+                            → 当前：{activeQualityReview?.overall_score != null ? `${activeQualityReview.overall_score}分` : 'N/A'}
+                            {refinementHistory.length > 0 && activeQualityReview?.overall_score != null && refinementHistory[0].score != null && (
+                              <span className={activeQualityReview.overall_score - refinementHistory[0].score >= 0 ? 'text-green-600' : 'text-red-600'}>
+                                {' '}({activeQualityReview.overall_score - refinementHistory[0].score >= 0 ? '+' : ''}{activeQualityReview.overall_score - refinementHistory[0].score})
                               </span>
                             )}
                           </span>
                         </div>
                       </div>
                     )}
-                    {result.quality_review.issues && result.quality_review.issues.length > 0 && (
+                    {activeQualityReview.issues && activeQualityReview.issues.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-gray-500 mb-1.5">问题清单</p>
-                        {result.quality_review.issues.map((iss, i) => (
+                        {activeQualityReview.issues.map((iss, i) => (
                           <div key={i} className="flex items-start gap-2 mb-1.5 text-xs">
                             <span className={`shrink-0 mt-0.5 ${
                               iss.severity === 'error' ? 'text-red-500' :
@@ -1371,18 +1404,18 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
                         ))}
                       </div>
                     )}
-                    {result.quality_review.strengths && result.quality_review.strengths.length > 0 && (
+                    {activeQualityReview.strengths && activeQualityReview.strengths.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-green-600 mb-1">亮点</p>
-                        {result.quality_review.strengths.map((s, i) => (
+                        {activeQualityReview.strengths.map((s, i) => (
                           <p key={i} className="text-xs text-gray-600">• {s}</p>
                         ))}
                       </div>
                     )}
-                    {result.quality_review.need_human_check && result.quality_review.need_human_check.length > 0 && (
+                    {activeQualityReview.need_human_check && activeQualityReview.need_human_check.length > 0 && (
                       <div>
                         <p className="text-xs font-medium text-orange-600 mb-1">人工需确认</p>
-                        {result.quality_review.need_human_check.map((c, i) => (
+                        {activeQualityReview.need_human_check.map((c, i) => (
                           <p key={i} className="text-xs text-gray-600 flex items-start gap-1">
                             <input type="checkbox" className="mt-0.5 shrink-0" readOnly />
                             <span>{c}</span>
@@ -1391,10 +1424,11 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
                       </div>
                     )}
                     {/* Restore best version */}
-                    {bestResult && result.quality_review?.overall_score !== bestScore && bestScore != null && (
+                    {bestResult && activeQualityReview?.overall_score !== bestScore && bestScore != null && (
                       <button
                         onClick={() => {
-                          setResult(bestResult)
+                          if (mode === 'ecommerce') setEcomResult(bestResult)
+                          else setContentResult(bestResult)
                           setQualityOpen(true)
                         }}
                         className="mt-2 w-full py-2 text-xs font-medium text-green-700 bg-green-50 border border-green-300 hover:bg-green-100 rounded-md transition-colors"
@@ -1403,7 +1437,8 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
                       </button>
                     )}
                     {/* Refine button */}
-                    {result.quality_review.issues && result.quality_review.issues.length > 0 && (
+                    {((mode === 'ecommerce' && ecomResult?.quality_review?.issues?.length) ||
+                      (mode === 'content' && contentResult?.content_reviews?.[contentActiveTab]?.issues?.length)) && (
                       <button
                         onClick={handleRefine}
                         disabled={loading}
@@ -1424,12 +1459,12 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
             {/* Platform Tabs */}
             <div className="flex border-b border-gray-200 bg-white px-4 items-center">
               <div className="flex">
-                {Object.keys(result.platforms).map(p => (
+                {mode === 'ecommerce' && ecomResult?.platforms && Object.keys(ecomResult.platforms).map(p => (
                   <button
                     key={p}
-                    onClick={() => { setActiveTab(p); setCompareMode(false) }}
+                    onClick={() => { setEcomActiveTab(p); setCompareMode(false) }}
                     className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-                      activeTab === p && !compareMode
+                      ecomActiveTab === p && !compareMode
                         ? `border-blue-600 text-blue-600`
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
@@ -1437,18 +1472,16 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
                     {p}
                   </button>
                 ))}
-                {result.content_assets && Object.keys(result.content_assets).map(cp => {
-                  // Map flat-format keys to friendly names for display
+                {mode === 'content' && contentResult?.content_assets && Object.keys(contentResult.content_assets).map(cp => {
                   const isFlatKey = cp === 'social_post' || cp === 'video_script'
                   const displayName = cp === 'social_post' ? '图文种草' : cp === 'video_script' ? '视频脚本' : cp
-                  const tabColor = isFlatKey ? 'bg-purple-500' : (CONTENT_PLATFORM_TAB_COLORS[cp] || 'bg-purple-500')
-                  const isActive = activeTab === cp && !compareMode
-                  const review = result.content_reviews?.[cp]
+                  const isActive = contentActiveTab === cp && !compareMode
+                  const review = contentResult.content_reviews?.[cp]
                   const score = review?.overall_score ?? null
                   return (
                     <button
                       key={cp}
-                      onClick={() => { setActiveTab(cp); setCompareMode(false) }}
+                      onClick={() => { setContentActiveTab(cp); setCompareMode(false) }}
                       className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-1.5 ${
                         isActive
                           ? `border-purple-600 text-purple-600`
@@ -1471,6 +1504,7 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
                   )
                 })}
               </div>
+              {mode === 'ecommerce' && ecomResult?.platforms && Object.keys(ecomResult.platforms).length > 1 && (
               <button
                 onClick={() => setCompareMode(!compareMode)}
                 className={`ml-auto px-3 py-1 text-xs rounded-md transition-colors ${
@@ -1481,22 +1515,23 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
               >
                 {compareMode ? '退出对比' : '对比模式'}
               </button>
+              )}
             </div>
 
-            {/* Comparison View */}
-            {compareMode && (
+            {/* Comparison View (e-commerce only) */}
+            {compareMode && ecomResult?.platforms && (
               <div className="flex-1 overflow-auto p-4">
-                <CompareView platforms={result.platforms} />
+                <CompareView platforms={ecomResult.platforms} />
               </div>
             )}
 
             {/* E-commerce Platform Content */}
-            {!compareMode && result.platforms && result.platforms[activeTab] && (
+            {!compareMode && mode === 'ecommerce' && ecomResult?.platforms && ecomResult.platforms[ecomActiveTab] && (
               <div className="flex-1 overflow-auto p-6 space-y-6">
                 <ErrorBoundary>
                   <PlatformPanel
-                    platform={activeTab}
-                    data={result.platforms[activeTab]}
+                    platform={ecomActiveTab}
+                    data={ecomResult.platforms[ecomActiveTab]}
                     copiedText={copiedText}
                     onCopy={copyToClipboard}
                     onRegenerate={handleRegenerate}
@@ -1506,19 +1541,18 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
             )}
 
             {/* Content Platform View (single platform) */}
-            {!compareMode && result.content_assets && result.content_assets[activeTab] && (() => {
-              const asset = result.content_assets![activeTab]
-              const review = result.content_reviews?.[activeTab]
-              // Handle both per-platform format ({小红书: {social_post: {...}}}) and flat format ({social_post: {...}})
-              const isFlat = activeTab === 'social_post' || activeTab === 'video_script'
-              const sp = isFlat ? (activeTab === 'social_post' ? (asset as unknown as SocialPost) : undefined) : asset.social_post
-              const vs = isFlat ? (activeTab === 'video_script' ? (asset as unknown as VideoScript) : undefined) : asset.video_script
+            {!compareMode && mode === 'content' && contentResult?.content_assets && contentResult.content_assets[contentActiveTab] && (() => {
+              const asset = contentResult.content_assets![contentActiveTab]
+              const review = contentResult.content_reviews?.[contentActiveTab]
+              const isFlat = contentActiveTab === 'social_post' || contentActiveTab === 'video_script'
+              const sp = isFlat ? (contentActiveTab === 'social_post' ? (asset as unknown as SocialPost) : undefined) : asset.social_post
+              const vs = isFlat ? (contentActiveTab === 'video_script' ? (asset as unknown as VideoScript) : undefined) : asset.video_script
               return (
                 <div className="flex-1 overflow-auto p-6 space-y-6">
-                  {result.content_warnings && result.content_warnings.length > 0 && (
+                  {contentResult.content_warnings && contentResult.content_warnings.length > 0 && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-700">
                       <p className="font-medium mb-1">以下平台生成失败：</p>
-                      {result.content_warnings.map((w, i) => <p key={i}>- {w}</p>)}
+                      {contentResult.content_warnings.map((w, i) => <p key={i}>- {w}</p>)}
                     </div>
                   )}
                   {/* Content review */}
@@ -1587,7 +1621,7 @@ export default function SellingPoint({ prefill }: { prefill?: SellingPrefill | n
           </>
         )}
 
-        {!loading && !result && (
+        {!loading && !activeResult && (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">
             填写产品信息后点击"生成文案"即可
           </div>
@@ -1653,6 +1687,7 @@ function PlatformPanel({
     }
     if (data.design_brief) {
       lines.push('\n【主图设计简报】')
+      if (data.design_brief.design_rationale) lines.push(`设计思路：${data.design_brief.design_rationale}`)
       if (data.design_brief.layout_style) lines.push(`构图类型：${data.design_brief.layout_style}`)
       if (data.design_brief.colors) lines.push(`配色方案：${data.design_brief.colors}`)
       if (data.design_brief.font_style) lines.push(`字体建议：${data.design_brief.font_style}`)
@@ -1874,6 +1909,10 @@ function PlatformPanel({
             <RegenerateBtn section="design_brief" label="主图设计简报" />
           </h3>
           <div className="bg-white border border-purple-200 rounded-lg p-4 space-y-3">
+            <div className="flex gap-3">
+              <span className="text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded shrink-0 w-20 text-center">设计思路</span>
+              <p className="text-sm text-gray-700 italic">{typeof data.design_brief.design_rationale === 'object' && data.design_brief.design_rationale !== null ? String(data.design_brief.design_rationale.text || data.design_brief.design_rationale.content || data.design_brief.design_rationale.description || '') : (data.design_brief.design_rationale || '(未生成)')}</p>
+            </div>
             {data.design_brief.layout_style && (
               <div className="flex gap-3">
                 <span className="text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded shrink-0 w-20 text-center">构图类型</span>
@@ -2104,9 +2143,9 @@ function SocialPostView({ data }: { data: SocialPost }) {
     <section>
       {data.post_types && data.post_types.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">
-          {data.post_types.map((t, i) => (
+          {data.post_types.map((t: any, i: number) => (
             <span key={i} className="px-2 py-0.5 text-xs bg-pink-50 text-pink-600 rounded-full border border-pink-200">
-              {t}
+              {typeof t === 'object' && t !== null ? String(t.type || t.text || t.label || t.description || '') : String(t)}
             </span>
           ))}
         </div>
@@ -2141,8 +2180,8 @@ function SocialPostView({ data }: { data: SocialPost }) {
             <div className="mb-3">
               <span className="text-xs text-blue-500 font-medium">正文逻辑流</span>
               <ol className="mt-1 space-y-0.5">
-                {data.body_framework.body_flow.map((step, i) => (
-                  <li key={i} className="text-sm text-gray-700 ml-4 list-decimal">{step}</li>
+                {data.body_framework.body_flow.map((step: any, i: number) => (
+                  <li key={i} className="text-sm text-gray-700 ml-4 list-decimal">{typeof step === 'object' && step !== null ? String(step.text || step.title || step.content || '') : String(step)}</li>
                 ))}
               </ol>
             </div>
@@ -2182,10 +2221,10 @@ function SocialPostView({ data }: { data: SocialPost }) {
               <span className="text-sm text-gray-700">{data.image_plan.cover}</span>
             </div>
           )}
-          {data.image_plan.images && data.image_plan.images.map((img, i) => (
+          {data.image_plan.images && data.image_plan.images.map((img: any, i: number) => (
             <div key={i} className="mb-0.5">
               <span className="text-xs text-purple-500">图{i + 2}：</span>
-              <span className="text-sm text-gray-700">{img}</span>
+              <span className="text-sm text-gray-700">{typeof img === 'object' && img !== null ? String(img.url || img.src || img.text || img.description || '') : String(img)}</span>
             </div>
           ))}
           {data.image_plan.design_notes && (
@@ -2224,10 +2263,12 @@ function VideoScriptView({ data }: { data: VideoScript }) {
         <div className="mb-4">
           <p className="text-xs font-medium text-gray-500 mb-2">黄金3秒钩子方向（3选1）</p>
           <div className="space-y-1.5">
-            {data.hook_variants.map((h, i) => (
+            {data.hook_variants.map((h: any, i: number) => (
               <div key={i} className="flex items-start gap-2 p-2 bg-red-50 rounded-md">
                 <span className="text-xs font-bold text-red-500 shrink-0 w-5">{i + 1}.</span>
-                <span className="text-sm text-gray-800">{h}</span>
+                <span className="text-sm text-gray-800">
+                  {typeof h === 'object' && h !== null ? String(h.text || h.title || h.content || '') : String(h)}
+                </span>
               </div>
             ))}
           </div>
