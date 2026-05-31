@@ -1,7 +1,7 @@
 {
   "name": "info-aggregator",
   "author": "info-aggregator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "知识加工台 - 信息搜集、拆解、复盘",
   "main": "dist-electron/main.js",
   "scripts": {
