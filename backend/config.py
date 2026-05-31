@@ -33,9 +33,9 @@ class Settings(BaseSettings):
     volcano_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
 
     # Search
-    search_engine: str = "tavily"  # tavily | bing | direct
+    search_engine: str = "baidu"  # baidu | tavily | direct
     tavily_api_key: Optional[str] = None
-    bing_api_key: Optional[str] = None
+    baidu_api_key: Optional[str] = None
 
     # Obsidian
     obsidian_vault_path: Optional[str] = None

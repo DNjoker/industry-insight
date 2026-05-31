@@ -31,6 +31,8 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
   const [industry, setIndustry] = useState(prefillKeyword || '')
   const [timeRange, setTimeRange] = useState('month')
   const [role, setRole] = useState('general')
+  const [location, setLocation] = useState('')
+  const [overseas, setOverseas] = useState(false)
 
   useEffect(() => {
     if (prefillKeyword) setIndustry(prefillKeyword)
@@ -41,6 +43,31 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
   const [tokenUsage, setTokenUsage] = useState<ProgressEvent['token_usage']>(undefined)
   const [estimatedCost, setEstimatedCost] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Section regeneration
+  const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null)
+  const [regeneratedContent, setRegeneratedContent] = useState<string | null>(null)
+  const [regenError, setRegenError] = useState<string | null>(null)
+
+  // Section labels for dropdown
+  const sectionLabels: Record<string, string> = {
+    value_chain: overseas ? '跨境价值链' : '价值链分析',
+    competition: role === 'government' ? '产业分布格局' : '竞争格局',
+    players: '主要玩家',
+    consumers: '消费者行为',
+    tactics: role === 'government' ? '招商策略' : '经营打法',
+    brands: '品牌格局',
+    channels: overseas ? '跨境平台对比' : '渠道玩法',
+    trending_products: '爆品与趋势',
+    competitor_ops: '竞品打法拆解',
+    creative_pricing: '素材与定价',
+  }
+
+  // Filter out skipped sections for current role
+  const govSkipSections = ['channels', 'trending_products', 'competitor_ops', 'creative_pricing']
+  const availableSections = Object.entries(sectionLabels).filter(
+    ([key]) => role !== 'government' || !govSkipSections.includes(key)
+  )
 
   // Abort controller for SSE connection
   const abortRef = useRef<AbortController | null>(null)
@@ -121,7 +148,7 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
   const handleInputChange = (value: string) => {
     setIndustry(value)
     if (debounceRef.current) clearTimeout(debounceRef.current)
-    debounceRef.current = setTimeout(() => fetchSuggestions(value), 400)
+    debounceRef.current = setTimeout(() => fetchSuggestions(value), 300)
   }
 
   const handleSelectSuggestion = (name: string) => {
@@ -133,11 +160,16 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
     setIndustry('')
     setTimeRange('month')
     setRole('general')
+    setLocation('')
+    setOverseas(false)
     setProgress([])
     setReportPath(null)
     setError(null)
     setTokenUsage(undefined)
     setEstimatedCost(null)
+    setRegeneratedContent(null)
+    setRegenError(null)
+    setRegeneratingSection(null)
     setShowSuggestions(false)
     setSuggestions([])
     loadTrending()
@@ -155,6 +187,38 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
     }
     setScanning(false)
     setError('已取消')
+  }
+
+  const handleRegenerateSection = async (sectionKey: string) => {
+    if (!industry.trim() || regeneratingSection) return
+    setRegeneratingSection(sectionKey)
+    setRegeneratedContent(null)
+    setRegenError(null)
+    try {
+      const baseUrl = await getBaseUrl()
+      const res = await fetch(`${baseUrl}/api/scan/regenerate-section`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          industry: industry.trim(),
+          role,
+          section_key: sectionKey,
+          analysis_type: 'industry',
+          location,
+          overseas,
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.detail || `HTTP ${res.status}`)
+      }
+      const data = await res.json()
+      setRegeneratedContent(data.content)
+    } catch (err: any) {
+      setRegenError(err.message || '重写失败')
+    } finally {
+      setRegeneratingSection(null)
+    }
   }
 
   const clearSSETimeout = () => {
@@ -199,7 +263,7 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
       const response = await fetch(`${baseUrl}/api/scan/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry: query.trim(), time_range: timeRange, role }),
+        body: JSON.stringify({ industry: query.trim(), time_range: timeRange, role, location, overseas }),
         signal: controller.signal,
       })
 
@@ -288,7 +352,7 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
               if (e.key === 'Escape') setShowSuggestions(false)
             }}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 300)}
             placeholder="输入行业名称，如：宠物免洗手套、新能源汽车..."
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={scanning}
@@ -361,6 +425,19 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
         </div>
       </div>
 
+      {/* Location input */}
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-sm text-gray-500">所在地:</span>
+        <input
+          type="text"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="如：广西贺州、浙江杭州（可选）"
+          className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+          disabled={scanning}
+        />
+      </div>
+
       {/* Role selector */}
       <div className="flex items-center gap-2 mb-6">
         <span className="text-sm text-gray-500">报告视角:</span>
@@ -387,6 +464,27 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Overseas toggle */}
+      <div className="flex items-center gap-2 mb-6">
+        <span className="text-sm text-gray-500">出海/跨境:</span>
+        <button
+          onClick={() => setOverseas(!overseas)}
+          disabled={scanning}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+            overseas ? 'bg-blue-600' : 'bg-gray-300'
+          }`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+              overseas ? 'translate-x-6' : 'translate-x-1'
+            }`}
+          />
+        </button>
+        <span className="text-xs text-gray-400">
+          {overseas ? '启用双语搜索与跨境专属章节' : '默认国内视角'}
+        </span>
       </div>
 
         </>
@@ -480,6 +578,40 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
                 搜索新行业
               </button>
             </div>
+          </div>
+
+          {/* Section regeneration */}
+          <div className="mt-4 pt-4 border-t border-green-200">
+            <p className="text-sm text-green-700 mb-2 font-medium">章节重写</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                id="section-select"
+                className="px-3 py-1.5 text-sm border border-green-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500"
+                onChange={(e) => {
+                  if (e.target.value) handleRegenerateSection(e.target.value)
+                  e.target.value = ''
+                }}
+                disabled={regeneratingSection !== null}
+              >
+                <option value="">选择要重写的章节...</option>
+                {availableSections.map(([key, label]) => (
+                  <option key={key} value={key}>{label}</option>
+                ))}
+              </select>
+              {regeneratingSection && (
+                <span className="text-sm text-green-600 animate-pulse">
+                  正在重写 {sectionLabels[regeneratingSection]}...
+                </span>
+              )}
+            </div>
+            {regenError && (
+              <p className="mt-2 text-sm text-red-600">{regenError}</p>
+            )}
+            {regeneratedContent && (
+              <div className="mt-3 p-3 bg-white border border-green-200 rounded-lg max-h-96 overflow-y-auto">
+                <div className="prose prose-sm max-w-none text-gray-700" dangerouslySetInnerHTML={{ __html: regeneratedContent.replace(/\n/g, '<br/>') }} />
+              </div>
+            )}
           </div>
         </div>
       )}

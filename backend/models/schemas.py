@@ -6,6 +6,8 @@ class ScanRequest(BaseModel):
     industry: str
     time_range: str = "month"  # week, month, half_year, all
     role: str = "general"  # general, factory, brand, dealer, investor, government
+    location: str = ""  # optional location context, e.g. "广西贺州", "浙江杭州"
+    overseas: bool = False  # cross-border/overseas mode — enables bilingual search + overseas chapters
 
 
 class ScanProgress(BaseModel):
@@ -14,6 +16,21 @@ class ScanProgress(BaseModel):
     message: str
     report_path: Optional[str] = None
     source_count: Optional[int] = None
+
+
+class RegenerateSectionRequest(BaseModel):
+    industry: str
+    role: str = "general"
+    section_key: str  # e.g. "competition", "tactics", "value_chain"
+    analysis_type: str = "industry"  # "industry" or "product"
+    location: str = ""
+    overseas: bool = False
+
+
+class RegenerateSectionResponse(BaseModel):
+    section_key: str
+    section_name: str
+    content: str
 
 
 class SearchRequest(BaseModel):
@@ -26,6 +43,9 @@ class SearchResult(BaseModel):
     url: str
     snippet: str
     content: Optional[str] = None
+    quality_score: Optional[float] = None
+    authority_tier: Optional[int] = None
+    search_origin: Optional[str] = None  # which search query produced this result
 
 
 class ObsidianNote(BaseModel):
@@ -56,7 +76,7 @@ class ConfigUpdate(BaseModel):
     openai_base_url: Optional[str] = None
     search_engine: Optional[str] = None
     tavily_api_key: Optional[str] = None
-    bing_api_key: Optional[str] = None
+    baidu_api_key: Optional[str] = None
     obsidian_vault_path: Optional[str] = None
     volcano_api_key: Optional[str] = None
     volcano_vision_model: Optional[str] = None
@@ -73,7 +93,7 @@ class ConfigResponse(BaseModel):
     openai_base_url: Optional[str] = None
     search_engine: str = "tavily"
     has_tavily_key: bool = False
-    has_bing_key: bool = False
+    has_baidu_key: bool = False
     obsidian_vault_path: Optional[str] = None
     has_volcano_key: bool = False
     volcano_vision_model: str = "doubao-seed-1-6-251015"

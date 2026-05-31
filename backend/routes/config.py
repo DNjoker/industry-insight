@@ -65,7 +65,7 @@ async def get_config():
         openai_base_url=settings.openai_base_url,
         search_engine=getattr(settings, "search_engine", "tavily") or "tavily",
         has_tavily_key=bool(settings.tavily_api_key),
-        has_bing_key=bool(settings.bing_api_key),
+        has_baidu_key=bool(settings.baidu_api_key),
         obsidian_vault_path=get_vault_path(),
         has_volcano_key=bool(settings.volcano_api_key),
         volcano_vision_model=settings.volcano_vision_model or "doubao-seed-1-6-251015",
@@ -102,9 +102,9 @@ async def update_config(data: ConfigUpdate):
     if data.tavily_api_key is not None:
         settings.tavily_api_key = data.tavily_api_key
         env_updates["TAVILY_API_KEY"] = data.tavily_api_key
-    if data.bing_api_key is not None:
-        settings.bing_api_key = data.bing_api_key
-        env_updates["BING_API_KEY"] = data.bing_api_key
+    if data.baidu_api_key is not None:
+        settings.baidu_api_key = data.baidu_api_key
+        env_updates["BAIDU_API_KEY"] = data.baidu_api_key
     if data.obsidian_vault_path is not None:
         settings.obsidian_vault_path = data.obsidian_vault_path
         env_updates["OBSIDIAN_VAULT_PATH"] = data.obsidian_vault_path
@@ -133,7 +133,7 @@ async def update_config(data: ConfigUpdate):
         openai_base_url=settings.openai_base_url,
         search_engine=getattr(settings, "search_engine", "tavily") or "tavily",
         has_tavily_key=bool(settings.tavily_api_key),
-        has_bing_key=bool(settings.bing_api_key),
+        has_baidu_key=bool(settings.baidu_api_key),
         obsidian_vault_path=get_vault_path(),
         has_volcano_key=bool(settings.volcano_api_key),
         volcano_vision_model=settings.volcano_vision_model or "doubao-seed-1-6-251015",

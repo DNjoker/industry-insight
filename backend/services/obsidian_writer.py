@@ -57,13 +57,16 @@ def build_frontmatter(extra: dict) -> str:
     return "\n".join(lines) + "\n\n"
 
 
-def save_source_article(industry: str, title: str, url: str, content: str, tags: list[str] | None = None) -> str:
+def save_source_article(industry: str, title: str, url: str, content: str, tags: list[str] | None = None, scan_id: str = "") -> str:
     """Save a source article to the Obsidian vault. Returns the relative path."""
     vault = get_vault_path()
     if not vault:
         raise ValueError("Obsidian vault path not configured")
 
-    dir_path = os.path.join(vault, "行业摸底", industry, "sources")
+    if scan_id:
+        dir_path = os.path.join(vault, "行业摸底", industry, "sources", scan_id)
+    else:
+        dir_path = os.path.join(vault, "行业摸底", industry, "sources")
     _ensure_dir(dir_path)
 
     filename = note_filename(title)
@@ -73,7 +76,7 @@ def save_source_article(industry: str, title: str, url: str, content: str, tags:
     if os.path.exists(filepath):
         with open(filepath, "r", encoding="utf-8") as f:
             if url in f.read():
-                return os.path.join("行业摸底", industry, "sources", filename)
+                return os.path.join("行业摸底", industry, "sources", scan_id, filename) if scan_id else os.path.join("行业摸底", industry, "sources", filename)
 
     fm = build_frontmatter({
         "source_url": url,
@@ -83,11 +86,16 @@ def save_source_article(industry: str, title: str, url: str, content: str, tags:
 
     body = f"# {title}\n\n## 来源\n[原文链接]({url})\n\n## 全文\n{content}\n\n---\n*采集时间: {datetime.now().strftime('%Y-%m-%d %H:%M')}*"
     atomic_write(filepath, fm + body)
+    if scan_id:
+        return os.path.join("行业摸底", industry, "sources", scan_id, filename)
     return os.path.join("行业摸底", industry, "sources", filename)
 
 
-def save_report(industry: str, report_md: str, source_paths: list[str]) -> str:
-    """Save the main analysis report. Returns the relative path."""
+def save_report(industry: str, report_md: str, source_paths: list[str], source_tags: dict[str, str] | None = None) -> str:
+    """Save the main analysis report. Returns the relative path.
+
+    source_tags: optional dict mapping source_path -> tag label (e.g. " [英文]").
+    """
     vault = get_vault_path()
     if not vault:
         raise ValueError("Obsidian vault path not configured")
@@ -100,8 +108,9 @@ def save_report(industry: str, report_md: str, source_paths: list[str]) -> str:
     filepath = os.path.join(dir_path, filename)
 
     # Source links section
+    tags = source_tags or {}
     source_links = "\n".join(
-        f"- {generate_wikilink(p)}" for p in source_paths
+        f"- {generate_wikilink(p)} {tags.get(p, '')}" for p in source_paths
     )
 
     fm = build_frontmatter({

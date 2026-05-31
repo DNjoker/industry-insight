@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   encryptString: (plaintext: string) => ipcRenderer.invoke('encrypt-string', plaintext),
   decryptString: (encrypted: string) => ipcRenderer.invoke('decrypt-string', encrypted),
+  restartBackend: () => ipcRenderer.invoke('restart-backend'),
 })

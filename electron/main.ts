@@ -5,6 +5,7 @@ import net from 'net'
 import fs from 'fs'
 import https from 'https'
 import http from 'http'
+import treeKill from 'tree-kill'
 
 let mainWindow: BrowserWindow | null = null
 let pythonProcess: ChildProcess | null = null
@@ -139,6 +140,24 @@ function startPythonBackend(): void {
     } else if (!backendRestarting && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('backend-status', 'disconnected')
     }
+  })
+}
+
+function killPythonBackend(): Promise<void> {
+  return new Promise((resolve) => {
+    if (!pythonProcess || !pythonProcess.pid) {
+      resolve()
+      return
+    }
+    const pid = pythonProcess.pid
+    console.log(`[Backend] Killing process tree for PID ${pid}`)
+    treeKill(pid, 'SIGTERM', (err) => {
+      if (err) {
+        console.error(`[Backend] tree-kill error: ${err}`)
+      }
+      pythonProcess = null
+      resolve()
+    })
   })
 }
 
@@ -318,6 +337,29 @@ function setupIpcHandlers(): void {
   ipcMain.handle('open-external', async (_event, url: string) => {
     return shell.openExternal(url)
   })
+
+  ipcMain.handle('restart-backend', async () => {
+    if (backendRestarting) return { success: false, message: '后端正在重启中，请稍候' }
+    backendRestarting = true
+    backendRestartCount = 0  // reset counter for manual restart
+
+    await killPythonBackend()
+    console.log('[Backend] Manual restart — old process killed')
+
+    startPythonBackend()
+    const ready = await waitForBackend(30)
+    backendRestarting = false
+
+    if (ready && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('backend-status', 'connected')
+      return { success: true, message: '后端已重启' }
+    } else {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('backend-status', 'disconnected')
+      }
+      return { success: false, message: '后端重启失败，请检查后端日志' }
+    }
+  })
 }
 
 function downloadFile(url: string, dest: string): Promise<void> {
@@ -381,15 +423,8 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  if (pythonProcess) {
-    pythonProcess.kill()
-    // Give it a moment for graceful shutdown
-    const watchdog = setTimeout(() => {
-      if (pythonProcess) {
-        pythonProcess.kill('SIGKILL')
-      }
-    }, 3000)
-    pythonProcess.on('close', () => clearTimeout(watchdog))
+  if (pythonProcess && pythonProcess.pid) {
+    treeKill(pythonProcess.pid, 'SIGTERM')
     pythonProcess = null
   }
 })

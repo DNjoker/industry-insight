@@ -10,7 +10,7 @@ interface Config {
   openai_base_url: string
   search_engine: string
   tavily_api_key: string
-  bing_api_key: string
+  baidu_api_key: string
   obsidian_vault_path: string
   volcano_api_key: string
   volcano_vision_model: string
@@ -27,7 +27,7 @@ interface BackendConfig {
   openai_base_url: string | null
   search_engine: string
   has_tavily_key: boolean
-  has_bing_key: boolean
+  has_baidu_key: boolean
   obsidian_vault_path: string | null
   has_volcano_key: boolean
   volcano_vision_model: string
@@ -43,9 +43,9 @@ function emptyConfig(): Config {
     anthropic_api_key: '',
     openai_api_key: '',
     openai_base_url: '',
-    search_engine: 'tavily',
+    search_engine: 'baidu',
     tavily_api_key: '',
-    bing_api_key: '',
+    baidu_api_key: '',
     obsidian_vault_path: '',
     volcano_api_key: '',
     volcano_vision_model: 'doubao-seed-1-6-251015',
@@ -99,7 +99,7 @@ export default function Settings() {
     }
   }
 
-  const KEY_FIELDS = ['deepseek_api_key', 'anthropic_api_key', 'openai_api_key', 'tavily_api_key', 'bing_api_key', 'volcano_api_key'] as const
+  const KEY_FIELDS = ['deepseek_api_key', 'anthropic_api_key', 'openai_api_key', 'tavily_api_key', 'baidu_api_key', 'volcano_api_key'] as const
 
   // Load from localStorage + backend on mount
   useEffect(() => {
@@ -195,7 +195,7 @@ export default function Settings() {
           openai_base_url: config.openai_base_url || null,
           search_engine: config.search_engine || null,
           tavily_api_key: config.tavily_api_key || null,
-          bing_api_key: config.bing_api_key || null,
+          baidu_api_key: config.baidu_api_key || null,
           obsidian_vault_path: config.obsidian_vault_path || null,
           volcano_api_key: config.volcano_api_key || null,
           volcano_vision_model: config.volcano_vision_model || null,
@@ -209,6 +209,25 @@ export default function Settings() {
 
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  const [restarting, setRestarting] = useState(false)
+
+  const handleRestartBackend = async () => {
+    if (restarting) return
+    setRestarting(true)
+    try {
+      const result = await window.electronAPI?.restartBackend()
+      if (result?.success) {
+        alert('后端已重启')
+      } else {
+        alert(`重启失败: ${result?.message || '未知错误'}`)
+      }
+    } catch (e) {
+      alert(`重启失败: ${e}`)
+    } finally {
+      setRestarting(false)
+    }
   }
 
   const handleSelectVault = async () => {
@@ -322,9 +341,9 @@ export default function Settings() {
               onChange={(e) => updateField('search_engine', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              <option value="tavily">Tavily（推荐，需 VPN，免费 1000 次/月）</option>
-              <option value="bing">Bing API（国内可用，需 Azure Key）</option>
-              <option value="direct">直接抓取（免 Key，备用方案）</option>
+              <option value="baidu">百度搜索（推荐国内，中文最优，1500 次/月免费）</option>
+              <option value="tavily">Tavily（海外搜索最优，需 VPN，1000 次/月）</option>
+              <option value="direct">直接抓取（免费不限量，无需 Key，中英文均可）</option>
             </select>
           </div>
 
@@ -339,30 +358,30 @@ export default function Settings() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-400 mt-1">
-                注册地址: <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-500">tavily.com</a>（免费额度 1000 次/月，需 VPN）
+                注册地址: <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-500">tavily.com</a>（免费 1000 次/月，需 VPN，出海模式单次扫描消耗约 20 次）
               </p>
             </div>
           )}
 
-          {config.search_engine === 'bing' && (
+          {config.search_engine === 'baidu' && (
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Bing API Key</label>
+              <label className="block text-sm text-gray-600 mb-1">百度千帆 AppBuilder API Key</label>
               <input
                 type="password"
-                value={config.bing_api_key}
-                onChange={(e) => updateField('bing_api_key', e.target.value)}
-                placeholder="Azure Bing Search API Key..."
+                value={config.baidu_api_key}
+                onChange={(e) => updateField('baidu_api_key', e.target.value)}
+                placeholder="Bearer ..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="text-xs text-gray-400 mt-1">
-                注册地址: <a href="https://portal.azure.com" target="_blank" rel="noopener noreferrer" className="text-blue-500">portal.azure.com</a> → 创建 Bing Search v7 资源（国内可用，免费 1000 次/月）
+                获取地址: <a href="https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application" target="_blank" rel="noopener noreferrer" className="text-blue-500">百度千帆控制台</a>（免费 1500 次/月，中文搜索质量最优，单次扫描仅 6 次请求）
               </p>
             </div>
           )}
 
           {config.search_engine === 'direct' && (
             <p className="text-sm text-gray-400 p-3 bg-gray-50 rounded-lg">
-              直接抓取模式无需 API Key，自动尝试 Bing/Baidu 搜索。若主引擎失败，也会自动启用此模式作为备用。
+              直接抓取模式无需 API Key，自动爬取 Bing/Baidu 搜索结果。中文走 cn.bing.com + 百度，英文走 www.bing.com。无需 VPN。若主引擎（Tavily）失败，也会自动启用此模式作为备用。
             </p>
           )}
         </div>
@@ -428,6 +447,13 @@ export default function Settings() {
           className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
         >
           测试连接
+        </button>
+        <button
+          onClick={handleRestartBackend}
+          disabled={restarting}
+          className="px-4 py-2.5 border border-orange-300 text-orange-700 rounded-lg hover:bg-orange-50 transition-colors text-sm disabled:opacity-50"
+        >
+          {restarting ? '重启中...' : '重启后端'}
         </button>
       </div>
     </div>

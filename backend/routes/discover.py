@@ -14,6 +14,10 @@ _trending_cache: list[dict] | None = None
 _trending_cache_time: float = 0
 _CACHE_TTL = 86400  # 24 hours
 
+# Autocomplete cache: key → (suggestions, timestamp), 5-min TTL
+_autocomplete_cache: dict[str, tuple[list[dict], float]] = {}
+_AUTOCOMPLETE_CACHE_TTL = 300  # 5 minutes
+
 # Fallback static list (used when LLM is unavailable)
 FALLBACK_TRENDING = [
     {"name": "直播电商", "reason": "持续高增长，平台混战"},
@@ -100,6 +104,14 @@ async def autocomplete(request: AutocompleteRequest):
     if not keyword or len(keyword) < 1:
         return AutocompleteResponse(suggestions=[])
 
+    # Check cache first
+    now = time.time()
+    cached = _autocomplete_cache.get(keyword)
+    if cached:
+        suggestions, cached_at = cached
+        if now - cached_at < _AUTOCOMPLETE_CACHE_TTL:
+            return AutocompleteResponse(suggestions=suggestions)
+
     prompt = f"""用户对「{keyword}」行业感兴趣，但这个范围可能太宽泛。
 请列出 5-8 个与「{keyword}」相关的更具体的细分行业/赛道/方向。
 每行输出一个，格式为：细分名称|一句话价值点
@@ -143,4 +155,6 @@ async def autocomplete(request: AutocompleteRequest):
         if name:
             suggestions.append({"name": name, "description": desc})
 
-    return AutocompleteResponse(suggestions=suggestions[:8])
+    suggestions = suggestions[:8]
+    _autocomplete_cache[keyword] = (suggestions, time.time())
+    return AutocompleteResponse(suggestions=suggestions)

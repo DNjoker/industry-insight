@@ -9,6 +9,7 @@ export interface ElectronAPI {
   onBackendStatus: (callback: (status: string) => void) => void
   encryptString: (plaintext: string) => Promise<string>
   decryptString: (encrypted: string) => Promise<string>
+  restartBackend: () => Promise<{ success: boolean; message: string }>
 }
 
 declare global {
