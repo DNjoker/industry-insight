@@ -56,7 +56,7 @@ async def scan_industry_stream(request: ScanRequest):
         await asyncio.sleep(0.1)
 
         try:
-            search_results = await search_all(industry, time_range=request.time_range, overseas=request.overseas)
+            search_results = await search_all(industry, time_range=request.time_range, overseas=request.overseas, location=request.location)
         except Exception as e:
             logger.error(f"Search failed: {e}")
             yield _event("error", 5, f"搜索失败: {e}")

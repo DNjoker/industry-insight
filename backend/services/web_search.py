@@ -402,7 +402,7 @@ async def search(query: str, max_results: int = 10, time_range: str = "month") -
     return []
 
 
-async def search_all(industry: str, time_range: str = "month", overseas: bool = False) -> list[SearchResult]:
+async def search_all(industry: str, time_range: str = "month", overseas: bool = False, location: str = "") -> list[SearchResult]:
     """Run all search queries and return deduplicated results."""
     enhanced = industry
     if len(industry) <= 2:
@@ -426,7 +426,17 @@ async def search_all(industry: str, time_range: str = "month", overseas: bool = 
     else:
         en_supplement = {}
 
-    all_queries = {**queries, **en_supplement}
+    # Location-specific supplement — gives AI local market data to ground analysis
+    if location and location.strip():
+        loc = location.strip()
+        loc_queries = {
+            "supplement_local_market": f"{enhanced} {loc} 市场 经销商 渠道 门店 代理",
+            "supplement_local_consumer": f"{loc} {enhanced} 消费者 购买 价格 偏好 本地",
+        }
+    else:
+        loc_queries = {}
+
+    all_queries = {**queries, **en_supplement, **loc_queries}
 
     semaphore = asyncio.Semaphore(3 if engine_name == "baidu" else 1)  # Baidu API handles concurrency
     per_query = 12 if engine_name == "baidu" else 8  # Baidu is cheap, grab more
