@@ -7,6 +7,8 @@ export interface ElectronAPI {
   captureWebview: (webContentsId: number) => Promise<any>
   openExternal: (url: string) => Promise<void>
   onBackendStatus: (callback: (status: string) => void) => void
+  encryptString: (plaintext: string) => Promise<string>
+  decryptString: (encrypted: string) => Promise<string>
 }
 
 declare global {

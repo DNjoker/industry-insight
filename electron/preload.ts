@@ -11,4 +11,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadImages: (urls: string[]) => ipcRenderer.invoke('download-images', urls),
   captureWebview: (webContentsId: number) => ipcRenderer.invoke('capture-webview', webContentsId),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  encryptString: (plaintext: string) => ipcRenderer.invoke('encrypt-string', plaintext),
+  decryptString: (encrypted: string) => ipcRenderer.invoke('decrypt-string', encrypted),
 })

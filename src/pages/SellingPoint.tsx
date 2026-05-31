@@ -1911,7 +1911,7 @@ function PlatformPanel({
           <div className="bg-white border border-purple-200 rounded-lg p-4 space-y-3">
             <div className="flex gap-3">
               <span className="text-xs font-medium text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded shrink-0 w-20 text-center">设计思路</span>
-              <p className="text-sm text-gray-700 italic">{typeof data.design_brief.design_rationale === 'object' && data.design_brief.design_rationale !== null ? String(data.design_brief.design_rationale.text || data.design_brief.design_rationale.content || data.design_brief.design_rationale.description || '') : (data.design_brief.design_rationale || '(未生成)')}</p>
+              <p className="text-sm text-gray-700 italic">{typeof data.design_brief.design_rationale === 'object' && data.design_brief.design_rationale !== null ? String((data.design_brief.design_rationale as any).text || (data.design_brief.design_rationale as any).content || (data.design_brief.design_rationale as any).description || '') : (data.design_brief.design_rationale || '(未生成)')}</p>
             </div>
             {data.design_brief.layout_style && (
               <div className="flex gap-3">

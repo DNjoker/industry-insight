@@ -8,6 +8,8 @@ interface ProgressEvent {
   message: string
   report_path?: string
   source_count?: number
+  token_usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  estimated_cost?: string
 }
 
 interface Suggestion {
@@ -28,6 +30,7 @@ interface Props {
 export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: Props) {
   const [industry, setIndustry] = useState(prefillKeyword || '')
   const [timeRange, setTimeRange] = useState('month')
+  const [role, setRole] = useState('general')
 
   useEffect(() => {
     if (prefillKeyword) setIndustry(prefillKeyword)
@@ -35,6 +38,16 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
   const [scanning, setScanning] = useState(false)
   const [progress, setProgress] = useState<ProgressEvent[]>([])
   const [reportPath, setReportPath] = useState<string | null>(null)
+  const [tokenUsage, setTokenUsage] = useState<ProgressEvent['token_usage']>(undefined)
+  const [estimatedCost, setEstimatedCost] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // Abort controller for SSE connection
+  const abortRef = useRef<AbortController | null>(null)
+  // Track last event time for SSE timeout detection
+  const lastEventTimeRef = useRef<number>(0)
+  const sseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const SSE_TIMEOUT_MS = 60000 // 60 seconds with no event = connection lost
 
   // Autocomplete
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
@@ -118,12 +131,50 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
 
   const handleReset = () => {
     setIndustry('')
+    setTimeRange('month')
+    setRole('general')
     setProgress([])
     setReportPath(null)
+    setError(null)
+    setTokenUsage(undefined)
+    setEstimatedCost(null)
     setShowSuggestions(false)
     setSuggestions([])
     loadTrending()
     loadRecentSearches()
+  }
+
+  const handleCancel = () => {
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+    if (sseTimeoutRef.current) {
+      clearTimeout(sseTimeoutRef.current)
+      sseTimeoutRef.current = null
+    }
+    setScanning(false)
+    setError('已取消')
+  }
+
+  const clearSSETimeout = () => {
+    if (sseTimeoutRef.current) {
+      clearTimeout(sseTimeoutRef.current)
+      sseTimeoutRef.current = null
+    }
+  }
+
+  const resetSSETimeout = () => {
+    clearSSETimeout()
+    sseTimeoutRef.current = setTimeout(() => {
+      // No events for SSE_TIMEOUT_MS — likely connection lost
+      if (abortRef.current && !abortRef.current.signal.aborted) {
+        abortRef.current.abort()
+        abortRef.current = null
+      }
+      setScanning(false)
+      setError('连接超时，后端可能已断开。请检查后端是否正常运行，然后重试。')
+    }, SSE_TIMEOUT_MS)
   }
 
   const handleScan = async (keyword?: string) => {
@@ -135,18 +186,32 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
     setScanning(true)
     setProgress([])
     setReportPath(null)
+    setError(null)
+    setTokenUsage(undefined)
+    setEstimatedCost(null)
     saveRecentSearch(query.trim())
+
+    const controller = new AbortController()
+    abortRef.current = controller
 
     try {
       const baseUrl = await getBaseUrl()
       const response = await fetch(`${baseUrl}/api/scan/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry: query.trim(), time_range: timeRange }),
+        body: JSON.stringify({ industry: query.trim(), time_range: timeRange, role }),
+        signal: controller.signal,
       })
 
       const reader = response.body?.getReader()
-      if (!reader) return
+      if (!reader) {
+        setError('无法连接到后端服务')
+        setScanning(false)
+        return
+      }
+
+      lastEventTimeRef.current = Date.now()
+      resetSSETimeout()
 
       const decoder = new TextDecoder()
       let buffer = ''
@@ -154,6 +219,9 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+
+        lastEventTimeRef.current = Date.now()
+        resetSSETimeout()
 
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
@@ -164,16 +232,35 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
             try {
               const data = JSON.parse(line.slice(6)) as ProgressEvent
               setProgress((prev) => [...prev, data])
+              if (data.token_usage) {
+                setTokenUsage(data.token_usage)
+                setEstimatedCost(data.estimated_cost || null)
+              }
               if (data.step === 'done' && data.report_path) {
                 setReportPath(data.report_path)
               }
-            } catch { /* ignore */ }
+              if (data.step === 'error') {
+                setError(data.message)
+              }
+            } catch { /* ignore malformed JSON */ }
           }
         }
       }
-    } catch (err) {
-      console.error('Scan failed:', err)
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        // User cancelled, error already set in handleCancel
+      } else {
+        console.error('Scan failed:', err)
+        const msg = err.message || '未知错误'
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+          setError('无法连接后端服务。请确认后端已启动，然后刷新页面重试。')
+        } else {
+          setError(`扫描失败: ${msg}`)
+        }
+      }
     } finally {
+      clearSSETimeout()
+      abortRef.current = null
       setScanning(false)
     }
   }
@@ -187,7 +274,9 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
         <p className="text-gray-500">输入行业名称，自动搜索并生成结构化分析报告</p>
       </div>
 
-      {/* Search input with autocomplete */}
+      {/* Search input with autocomplete — hidden when report is done */}
+      {!reportPath && (
+        <>
       <div className="relative flex gap-3 mb-4">
         <div className="relative flex-1">
           <input
@@ -200,7 +289,7 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
             }}
             onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
             onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
-            placeholder="输入行业名称，如：直播电商、宠物经济..."
+            placeholder="输入行业名称，如：宠物免洗手套、新能源汽车..."
             className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             disabled={scanning}
           />
@@ -227,17 +316,27 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
             </div>
           )}
         </div>
-        <button
-          onClick={() => handleScan()}
-          disabled={!industry.trim() || scanning}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
-        >
-          {scanning ? '分析中...' : '开始分析'}
-        </button>
+        <div className="flex gap-2">
+          {scanning && (
+            <button
+              onClick={handleCancel}
+              className="px-4 py-2.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors whitespace-nowrap text-sm"
+            >
+              取消
+            </button>
+          )}
+          <button
+            onClick={() => handleScan()}
+            disabled={!industry.trim() || scanning}
+            className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+          >
+            {scanning ? '分析中...' : '开始分析'}
+          </button>
+        </div>
       </div>
 
       {/* Time range selector */}
-      <div className="flex items-center gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-3">
         <span className="text-sm text-gray-500">时效范围:</span>
         <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
           {[
@@ -262,8 +361,52 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
         </div>
       </div>
 
+      {/* Role selector */}
+      <div className="flex items-center gap-2 mb-6">
+        <span className="text-sm text-gray-500">报告视角:</span>
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5 flex-wrap">
+          {[
+            { value: 'general', label: '不限' },
+            { value: 'factory', label: '厂家' },
+            { value: 'brand', label: '品牌方' },
+            { value: 'dealer', label: '经销商' },
+            { value: 'investor', label: '投资人' },
+            { value: 'government', label: '政府' },
+          ].map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setRole(opt.value)}
+              disabled={scanning}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                role === opt.value
+                  ? 'bg-white text-emerald-600 shadow-sm font-medium'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+        </>
+      )}
+
+      {/* Error display */}
+      {error && !scanning && (
+        <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-700 text-sm">{error}</p>
+          <button
+            onClick={handleReset}
+            className="mt-2 text-sm text-red-600 hover:text-red-800 underline"
+          >
+            清除错误，重新开始
+          </button>
+        </div>
+      )}
+
       {/* Recent searches */}
-      {recentSearches.length > 0 && !currentProgress && !reportPath && (
+      {recentSearches.length > 0 && !currentProgress && !reportPath && !error && (
         <div className="mb-6">
           <p className="text-xs text-gray-400 mb-2">最近搜索</p>
           <div className="flex flex-wrap gap-2">
@@ -281,7 +424,7 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
       )}
 
       {/* Trending industries */}
-      {!currentProgress && !industry && !reportPath && (
+      {!currentProgress && !industry && !reportPath && !error && (
         <div className="mb-6">
           <p className="text-sm text-gray-400 mb-3">猜你喜欢 · 热门行业</p>
           <div className="grid grid-cols-2 gap-3">
@@ -313,16 +456,23 @@ export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: 
             <div className="min-w-0 flex-1">
               <p className="text-green-800 font-medium">报告已保存到 Obsidian</p>
               <code className="text-sm text-green-700 break-all">{reportPath}</code>
+              {tokenUsage && (
+                <div className="flex items-center gap-3 mt-2">
+                  <span className="inline-flex items-center gap-1.5 text-xs bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+                    <span className="font-medium">{tokenUsage.total_tokens.toLocaleString()}</span> token
+                  </span>
+                  <span className="text-xs text-green-600">
+                    提示 {tokenUsage.prompt_tokens.toLocaleString()} + 生成 {tokenUsage.completion_tokens.toLocaleString()}
+                  </span>
+                  {estimatedCost && (
+                    <span className="inline-flex items-center gap-1 text-xs bg-green-200 text-green-800 px-2 py-0.5 rounded-full font-medium">
+                      {estimatedCost}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {onTriggerSellingPoint && (
-                <button
-                  onClick={() => onTriggerSellingPoint(industry, reportPath)}
-                  className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm whitespace-nowrap"
-                >
-                  提炼卖点
-                </button>
-              )}
               <button
                 onClick={handleReset}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm whitespace-nowrap"

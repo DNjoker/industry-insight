@@ -1,3 +1,4 @@
+import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -38,19 +39,24 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="信息汇总桌面工具 API", lifespan=lifespan)
 
-# Register routes
-from backend.routes import scan, search, obsidian, config, embeddings, discover, extract, chat, strategy, selling_point, competitor
+# Register routes — V1 mode only loads stable modules
+_is_v1 = os.environ.get("V1_MODE", "").lower() in ("1", "true", "yes")
+
+from backend.routes import scan, search, obsidian, config, discover
 app.include_router(scan.router)
 app.include_router(search.router)
 app.include_router(obsidian.router)
 app.include_router(config.router)
-app.include_router(embeddings.router)
 app.include_router(discover.router)
-app.include_router(extract.router)
-app.include_router(chat.router)
-app.include_router(strategy.router)
-app.include_router(selling_point.router)
-app.include_router(competitor.router)
+
+if not _is_v1:
+    from backend.routes import embeddings, extract, chat, strategy, selling_point, competitor
+    app.include_router(embeddings.router)
+    app.include_router(extract.router)
+    app.include_router(chat.router)
+    app.include_router(strategy.router)
+    app.include_router(selling_point.router)
+    app.include_router(competitor.router)
 
 app.add_middleware(
     CORSMiddleware,

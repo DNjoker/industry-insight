@@ -3,137 +3,128 @@ export default function UsageGuide() {
     <div className="max-w-3xl mx-auto p-6">
       <h2 className="text-2xl font-bold mb-6">使用说明</h2>
 
-      {/* API 配置 */}
+      {/* 快速上手 */}
+      <section className="mb-8">
+        <h3 className="text-lg font-bold mb-3">快速上手（2 步）</h3>
+        <div className="space-y-3 text-sm text-gray-700">
+          <div className="flex gap-2">
+            <span className="text-blue-500 font-bold shrink-0">1.</span>
+            <span>前往 <strong>设置</strong> 页，填入 DeepSeek API Key 和 Tavily API Key。不知道在哪里获取？往下看。</span>
+          </div>
+          <div className="flex gap-2">
+            <span className="text-blue-500 font-bold shrink-0">2.</span>
+            <span>回到 <strong>行业摸底</strong>，输入你想了解的行业（如"宠物免洗手套""新能源汽车"），点击开始分析，等待 3-5 分钟即可获得报告。</span>
+          </div>
+        </div>
+      </section>
+
+      {/* API Key 获取 */}
       <section className="mb-8">
         <h3 className="text-lg font-bold mb-3">需要的 API Key</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm border border-gray-200 rounded-lg">
             <thead className="bg-gray-50">
               <tr>
-                <th className="text-left px-4 py-2 border-b">功能</th>
-                <th className="text-left px-4 py-2 border-b">所需 Key</th>
+                <th className="text-left px-4 py-2 border-b">用途</th>
+                <th className="text-left px-4 py-2 border-b">推荐服务</th>
                 <th className="text-left px-4 py-2 border-b">获取地址</th>
-                <th className="text-left px-4 py-2 border-b">优先级</th>
+                <th className="text-left px-4 py-2 border-b">费用</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td className="px-4 py-2 border-b">AI 对话 / 提炼</td>
+                <td className="px-4 py-2 border-b font-medium">AI 分析</td>
                 <td className="px-4 py-2 border-b">
-                  DeepSeek API Key（推荐）<br />
-                  <span className="text-gray-400">或 Anthropic / OpenAI</span>
+                  DeepSeek（推荐）<br />
+                  <span className="text-gray-400 text-xs">也支持 Claude / OpenAI</span>
                 </td>
                 <td className="px-4 py-2 border-b">
-                  <a href="https://platform.deepseek.com" target="_blank" className="text-blue-600 hover:underline">platform.deepseek.com</a>
+                  <a href="https://platform.deepseek.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">platform.deepseek.com</a>
                 </td>
-                <td className="px-4 py-2 border-b">
-                  <span className="text-red-500 font-medium">必需</span>
-                </td>
+                <td className="px-4 py-2 border-b text-green-600">注册送额度，API 极便宜</td>
               </tr>
               <tr>
-                <td className="px-4 py-2 border-b">联网搜索</td>
+                <td className="px-4 py-2 border-b font-medium">联网搜索</td>
                 <td className="px-4 py-2 border-b">
-                  Tavily API Key（推荐）<br />
-                  <span className="text-gray-400">或 Bing Search API</span>
+                  Tavily（推荐，需 VPN）<br />
+                  <span className="text-gray-400 text-xs">也支持 Bing API（国内可用）</span>
                 </td>
                 <td className="px-4 py-2 border-b">
-                  <a href="https://tavily.com" target="_blank" className="text-blue-600 hover:underline">tavily.com</a>
+                  <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">tavily.com</a>
                 </td>
-                <td className="px-4 py-2 border-b">
-                  行业摸底 / 策略对谈联网搜索时需要
-                </td>
+                <td className="px-4 py-2 border-b text-green-600">免费 1000 次/月</td>
               </tr>
             </tbody>
           </table>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          DeepSeek 目前注册送额度，API 很便宜。Tavily 有免费额度（每月 1000 次搜索）。
+          没有 VPN 注册不了 Tavily？联系客服，免费远程协助注册。
         </p>
       </section>
 
-      {/* 功能说明 */}
+      {/* 行业摸底说明 */}
       <section className="mb-8">
-        <h3 className="text-lg font-bold mb-3">五个功能模块</h3>
+        <h3 className="text-lg font-bold mb-3">行业摸底 — 使用详解</h3>
+        <div className="p-4 bg-blue-50 rounded-lg mb-3">
+          <p className="text-sm text-blue-700">
+            输入一个行业/品类名称，AI 自动联网搜索并分析，生成包含价值链、竞争格局、消费者痛点、渠道策略、爆品趋势的结构化报告，保存到本地 Obsidian Vault。
+          </p>
+        </div>
 
-        <div className="space-y-4">
-          <div className="p-4 bg-blue-50 rounded-lg">
-            <h4 className="font-bold text-blue-800">行业摸底</h4>
-            <p className="text-sm text-blue-700 mt-1">
-              输入一个行业/赛道名称，自动联网搜索最新信息，生成结构化行业分析报告（价值链、竞争格局、消费者、渠道等），保存到 Obsidian Vault。
-            </p>
-            <p className="text-xs text-blue-500 mt-1">需要：DeepSeek Key + Tavily Key</p>
+        <div className="space-y-3 text-sm text-gray-700">
+          <div>
+            <h4 className="font-bold text-gray-800">搜索技巧</h4>
+            <ul className="list-disc ml-5 mt-1 space-y-1">
+              <li>品类名称越具体越好，如"宠物免洗手套"而非"宠物用品"</li>
+              <li>不确定准确名称时，先输入关键词，使用自动补全建议</li>
+              <li>时效范围选择"近一月"可获得最新趋势，选"不限"覆盖更广</li>
+            </ul>
           </div>
-
-          <div className="p-4 bg-green-50 rounded-lg">
-            <h4 className="font-bold text-green-800">知识榨取</h4>
-            <p className="text-sm text-green-700 mt-1">
-              批量粘贴文章链接或文字笔记，AI 自动提取核心观点，生成结构化知识卡片存入知识库。支持一行一条，用 | 分隔添加备注。
-            </p>
-            <p className="text-xs text-green-500 mt-1">需要：DeepSeek Key</p>
+          <div>
+            <h4 className="font-bold text-gray-800">分析流程</h4>
+            <p className="mt-1">搜索 → 抓取网页内容 → AI 分析 → 保存报告，全程约 3-5 分钟。可实时看到进度。</p>
           </div>
-
-          <div className="p-4 bg-purple-50 rounded-lg">
-            <h4 className="font-bold text-purple-800">策略对谈</h4>
-            <p className="text-sm text-purple-700 mt-1">
-              AI 策略顾问，支持两种模式：<strong>对话交流</strong>（简短互动、苏格拉底式追问）和<strong>详细分析</strong>（结构化长篇报告）。可切换知识库集合，可保存对话和搜索来源。
-            </p>
-            <p className="text-xs text-purple-500 mt-1">需要：DeepSeek Key；联网搜索需要 Tavily Key</p>
-          </div>
-
-          <div className="p-4 bg-orange-50 rounded-lg">
-            <h4 className="font-bold text-orange-800">对话梳理</h4>
-            <p className="text-sm text-orange-700 mt-1">
-              导入 DeepSeek 聊天记录（粘贴或从 Obsidian 选择已有文件），AI 自动提炼对话中的核心观点、用户想法、技术细节、待办事项，保存到 Obsidian 已提炼文件夹。
-            </p>
-            <p className="text-xs text-orange-500 mt-1">需要：DeepSeek Key；文件需放在 Vault/DeepSeek对话/ 目录下</p>
-          </div>
-
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <h4 className="font-bold text-gray-800">设置</h4>
-            <p className="text-sm text-gray-700 mt-1">
-              配置 API Key、Obsidian Vault 路径、知识库同步。首次使用需要先设置 Vault 路径和至少一个 AI Key。
-            </p>
+          <div>
+            <h4 className="font-bold text-gray-800">报告内容</h4>
+            <p className="mt-1">摘要、价值链、竞争格局、主要玩家、消费者行为与痛点、经营打法、品牌格局、渠道玩法、爆品与趋势、运营行动清单。</p>
           </div>
         </div>
       </section>
 
-      {/* 注意事项 */}
+      {/* 常见问题 */}
       <section className="mb-8">
-        <h3 className="text-lg font-bold mb-3">注意事项</h3>
-        <ul className="text-sm space-y-2 text-gray-700">
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">1.</span>
-            <span><strong>Obsidian Vault 路径</strong> — 必须先在设置页选择 Obsidian Vault 目录，否则无法保存任何文件。工具只会读写 Vault 目录下的文件，不会影响其他位置。</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">2.</span>
-            <span><strong>知识库同步</strong> — 在设置页点"同步"按钮，工具会扫描 Vault 中的知识卡片、行业摸底、DeepSeek对话 三个目录，建立本地语义索引（ChromaDB）。同步后"策略对谈"才能检索到你的知识库内容。首次同步会下载 embedding 模型（约 120MB），需要等待几分钟。</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">3.</span>
-            <span><strong>联网搜索消耗</strong> — "行业摸底"每个维度会触发一次搜索，完整报告共搜索 9 次。"策略对谈"每次对话会触发一次搜索。Tavily 免费额度每月 1000 次，日常使用够用。</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">4.</span>
-            <span><strong>DeepSeek API 稳定性</strong> — DeepSeek 高峰期可能限流或超时，遇到报错等几分钟重试即可。也可以在设置页切换到 OpenAI 或 Anthropic。</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">5.</span>
-            <span><strong>知识榨取 — 网页抓取限制</strong> — 部分网站（如公众号、知乎、需要登录的页面）可能无法抓取完整内容。遇到这种情况，手动复制粘贴文字到输入框效果更好。</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">6.</span>
-            <span><strong>对话梳理 — 文件格式</strong> — 从 Obsidian 加载对话文件时，文件需要符合 DeepSeek对话 的标准格式（## 对话记录 区域 + ### **角色** 标记）。直接粘贴对话文本则支持多种格式。</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">7.</span>
-            <span><strong>与 Obsidian 的关系</strong> — 本工具只负责往 Vault 写标准 Markdown 文件，不会修改 Obsidian 配置或已有文件。你在 Obsidian 里编辑的笔记下次同步时会被重新索引。</span>
-          </li>
-          <li className="flex gap-2">
-            <span className="text-blue-500 shrink-0">8.</span>
-            <span><strong>数据隐私</strong> — 所有对话和知识库内容存储在本地，只有调用 AI API 和搜索 API 时会把文本发到对应服务商。不使用语音输入、不上传文件到第三方。</span>
-          </li>
-        </ul>
+        <h3 className="text-lg font-bold mb-3">常见问题</h3>
+        <div className="space-y-3 text-sm">
+          <div>
+            <h4 className="font-bold text-gray-800">搜索不到结果？</h4>
+            <p className="text-gray-600 mt-0.5">尝试：换个更具体的行业名称、切换搜索引擎（Tavily 覆盖海外、Bing 覆盖国内）、把时效范围改为"不限"。</p>
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-800">报告分析和实际不符？</h4>
+            <p className="text-gray-600 mt-0.5">AI 基于网络搜索内容生成，信息可能存在时间差或片面性。建议定期（每月/每季度）重跑同一行业，对比变化趋势。</p>
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-800">API 调用失败？</h4>
+            <p className="text-gray-600 mt-0.5">DeepSeek 高峰期可能限流，等几分钟重试即可。Tavily 需要 VPN 才能访问。Bing API 国内可直接使用。</p>
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-800">报告保存在哪里？</h4>
+            <p className="text-gray-600 mt-0.5">默认保存在工具数据目录下的 data/vault/行业摸底/。如果配置了 Obsidian Vault 路径，则保存到 Vault 对应目录。</p>
+          </div>
+          <div>
+            <h4 className="font-bold text-gray-800">可以不用 Obsidian 吗？</h4>
+            <p className="text-gray-600 mt-0.5">可以。不配置 Obsidian 完全不影响使用，报告自动保存到工具的本地数据目录。</p>
+          </div>
+        </div>
+      </section>
+
+      {/* Obsidian 配置（可选） */}
+      <section className="mb-8">
+        <h3 className="text-lg font-bold mb-3">Obsidian 集成（可选）</h3>
+        <p className="text-sm text-gray-600">
+          配置 Obsidian Vault 后，行业报告自动保存到 Vault 中，可在 Obsidian 中查看、编辑、建立双向链接。
+          在设置页选择 Vault 根目录即可，工具只写入不会修改你的已有文件。
+        </p>
       </section>
     </div>
   )

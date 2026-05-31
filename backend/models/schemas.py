@@ -5,6 +5,7 @@ from typing import Optional
 class ScanRequest(BaseModel):
     industry: str
     time_range: str = "month"  # week, month, half_year, all
+    role: str = "general"  # general, factory, brand, dealer, investor, government
 
 
 class ScanProgress(BaseModel):

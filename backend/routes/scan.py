@@ -73,8 +73,11 @@ async def scan_industry_stream(request: ScanRequest):
 
         if not search_results:
             msg = (
-                "未找到「" + industry + "」相关文章。"
-                "请尝试更具体的行业名称，如: 直播电商、新能源汽车"
+                f"未找到 [{industry}] 的相关文章.\n\n"
+                "建议尝试:\n"
+                "1. 使用更具体或更宽泛的行业名称 (如'宠物零食'而非'宠物食品')\n"
+                "2. 更换时间范围 (选择'不限'可获得更多结果)\n"
+                "3. 切换搜索引擎 (Tavily 覆盖海外内容, Bing 覆盖国内内容)"
             )
             yield _event("error", 20, msg)
             return
@@ -99,7 +102,7 @@ async def scan_industry_stream(request: ScanRequest):
         report_content = ""
         try:
             report_content = await analyze_industry_streaming(
-                industry, search_results, progress_callback
+                industry, search_results, progress_callback, role=request.role
             )
         except Exception as e:
             logger.error(f"Analysis failed: {e}")

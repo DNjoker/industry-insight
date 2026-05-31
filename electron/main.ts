@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, Menu, session } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, Menu, safeStorage } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import net from 'net'
@@ -8,11 +8,44 @@ import http from 'http'
 
 let mainWindow: BrowserWindow | null = null
 let pythonProcess: ChildProcess | null = null
+let backendRestarting = false
 const BACKEND_PORT = 19877
+const BACKEND_MAX_RESTARTS = 3
 
 function getBackendUrl(): string {
   return `http://127.0.0.1:${BACKEND_PORT}`
 }
+
+// ---- Window state persistence ----
+const WINDOW_STATE_PATH = path.join(app.getPath('userData'), 'window-state.json')
+
+interface WindowState {
+  x?: number; y?: number; width: number; height: number; maximized?: boolean
+}
+
+function loadWindowState(): WindowState {
+  try {
+    if (fs.existsSync(WINDOW_STATE_PATH)) {
+      return JSON.parse(fs.readFileSync(WINDOW_STATE_PATH, 'utf-8'))
+    }
+  } catch {}
+  return { width: 1200, height: 800 }
+}
+
+function saveWindowState() {
+  if (!mainWindow) return
+  try {
+    const maximized = mainWindow.isMaximized()
+    const bounds = maximized
+      ? (loadWindowState()) // keep last non-maximized bounds
+      : mainWindow.getBounds()
+    const state: WindowState = { ...bounds, maximized }
+    fs.writeFileSync(WINDOW_STATE_PATH, JSON.stringify(state))
+  } catch {}
+}
+
+// ---- Backend lifecycle ----
+let backendRestartCount = 0
 
 function startPythonBackend(): void {
   const isDev = !!process.env.VITE_DEV_SERVER_URL
@@ -20,7 +53,6 @@ function startPythonBackend(): void {
   const dotenvTarget = path.join(userDataPath, '.env')
 
   if (isDev) {
-    // DEVELOPMENT: Use venv Python + uvicorn
     const projectRoot = path.join(__dirname, '..')
     const venvPython = process.platform === 'win32'
       ? path.join(projectRoot, 'venv', 'Scripts', 'python.exe')
@@ -40,7 +72,6 @@ function startPythonBackend(): void {
       env: { ...process.env },
     })
   } else {
-    // PRODUCTION: Use PyInstaller-packaged backend exe
     const backendExe = path.join(
       process.resourcesPath,
       'backend-dist',
@@ -53,6 +84,9 @@ function startPythonBackend(): void {
         '启动失败',
         `找不到后端程序:\n${backendExe}\n\n请重新安装应用。`,
       )
+      if (mainWindow) {
+        mainWindow.webContents.send('backend-status', 'error')
+      }
       return
     }
 
@@ -62,6 +96,7 @@ function startPythonBackend(): void {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
+        V1_MODE: 'true',
         CHROMA_DATA_DIR: userDataPath,
         DOTENV_PATH: dotenvTarget,
         BACKEND_HOST: '127.0.0.1',
@@ -81,6 +116,29 @@ function startPythonBackend(): void {
   pythonProcess.on('close', (code: number | null) => {
     console.log(`[Python] Process exited with code ${code}`)
     pythonProcess = null
+
+    if (!backendRestarting && backendRestartCount < BACKEND_MAX_RESTARTS && mainWindow && !mainWindow.isDestroyed()) {
+      backendRestarting = true
+      backendRestartCount++
+      console.log(`[Backend] Auto-restarting (attempt ${backendRestartCount}/${BACKEND_MAX_RESTARTS})...`)
+      mainWindow.webContents.send('backend-status', 'restarting')
+
+      setTimeout(() => {
+        startPythonBackend()
+        waitForBackend(30).then((ready) => {
+          backendRestarting = false
+          if (ready && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('backend-status', 'connected')
+            console.log('[Backend] Restart succeeded')
+          } else if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('backend-status', 'disconnected')
+            console.log('[Backend] Restart failed')
+          }
+        })
+      }, 2000)
+    } else if (!backendRestarting && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('backend-status', 'disconnected')
+    }
   })
 }
 
@@ -108,9 +166,13 @@ function waitForBackend(maxRetries = 30): Promise<boolean> {
 }
 
 function createWindow(): void {
+  const state = loadWindowState()
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: state.x,
+    y: state.y,
+    width: state.width,
+    height: state.height,
     minWidth: 900,
     minHeight: 600,
     title: '信息汇总桌面工具',
@@ -122,6 +184,16 @@ function createWindow(): void {
     },
   })
 
+  if (state.maximized) {
+    mainWindow.maximize()
+  }
+
+  // Save window state on move/resize
+  mainWindow.on('resize', saveWindowState)
+  mainWindow.on('move', saveWindowState)
+  mainWindow.on('maximize', saveWindowState)
+  mainWindow.on('unmaximize', saveWindowState)
+
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
@@ -129,7 +201,7 @@ function createWindow(): void {
   }
 }
 
-// IPC handlers
+// ---- IPC handlers ----
 function setupIpcHandlers(): void {
   ipcMain.handle('get-backend-url', () => getBackendUrl())
 
@@ -144,7 +216,7 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('open-folder', async (_event, folderPath: string) => {
     const result = await shell.openPath(folderPath)
-    return result  // '' on success, error message on failure
+    return result
   })
 
   ipcMain.handle('select-report', async () => {
@@ -158,7 +230,6 @@ function setupIpcHandlers(): void {
     return result.filePaths[0]
   })
 
-  // Webview capture: download images from URLs to local temp files
   ipcMain.handle('download-images', async (_event, urls: string[]) => {
     const tempDir = path.join(app.getPath('temp'), 'competitor-images')
     fs.mkdirSync(tempDir, { recursive: true })
@@ -183,7 +254,6 @@ function setupIpcHandlers(): void {
     return results.filter(Boolean) as string[]
   })
 
-  // Execute JS in webview to extract page content
   ipcMain.handle('capture-webview', async (_event, webContentsId: number) => {
     try {
       const wc = (global as any).__webContentsMap?.get(webContentsId)
@@ -193,15 +263,12 @@ function setupIpcHandlers(): void {
       const result = await wc.executeJavaScript(`
         (function() {
           const images = [];
-          // Main product images
           document.querySelectorAll('img').forEach(img => {
             const src = img.src || img.getAttribute('data-src') || '';
             if (src && src.startsWith('http') && img.naturalWidth > 200) {
               images.push({ url: src, width: img.naturalWidth, height: img.naturalHeight, alt: img.alt || '' });
             }
           });
-
-          // Text content
           const textElements = [];
           document.querySelectorAll('h1,h2,h3,h4,.title,.sellpoint,.desc,p').forEach(el => {
             const text = el.textContent?.trim();
@@ -209,7 +276,6 @@ function setupIpcHandlers(): void {
               textElements.push({ tag: el.tagName, text: text.substring(0, 300) });
             }
           });
-
           return {
             title: document.title,
             url: location.href,
@@ -219,14 +285,36 @@ function setupIpcHandlers(): void {
           };
         })()
       `)
-
       return result
     } catch (e: any) {
       return { error: e.message }
     }
   })
 
-  // Open a URL in the default browser
+  // ---- Encrypted storage ----
+  ipcMain.handle('encrypt-string', async (_event, plaintext: string) => {
+    if (!plaintext) return ''
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        return safeStorage.encryptString(plaintext).toString('base64')
+      }
+    } catch {}
+    return Buffer.from(plaintext, 'utf-8').toString('base64')
+  })
+
+  ipcMain.handle('decrypt-string', async (_event, encrypted: string) => {
+    if (!encrypted) return ''
+    try {
+      const buf = Buffer.from(encrypted, 'base64')
+      if (safeStorage.isEncryptionAvailable()) {
+        return safeStorage.decryptString(buf)
+      }
+      return buf.toString('utf-8')
+    } catch {
+      return ''
+    }
+  })
+
   ipcMain.handle('open-external', async (_event, url: string) => {
     return shell.openExternal(url)
   })
@@ -236,7 +324,6 @@ function downloadFile(url: string, dest: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http
     protocol.get(url, (res) => {
-      // Handle redirects
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         downloadFile(res.headers.location, dest).then(resolve).catch(reject)
         return
@@ -253,23 +340,39 @@ function downloadFile(url: string, dest: string): Promise<void> {
   })
 }
 
-app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null)
-  startPythonBackend()
-  setupIpcHandlers()
-  createWindow()
+// ---- Single instance lock ----
+const gotLock = app.requestSingleInstanceLock()
 
-  const backendReady = await waitForBackend()
-  if (backendReady && mainWindow) {
-    mainWindow.webContents.send('backend-status', 'connected')
-  }
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.focus()
     }
   })
-})
+
+  app.whenReady().then(async () => {
+    Menu.setApplicationMenu(null)
+    startPythonBackend()
+    setupIpcHandlers()
+    createWindow()
+
+    const backendReady = await waitForBackend()
+    if (backendReady && mainWindow) {
+      mainWindow.webContents.send('backend-status', 'connected')
+    } else if (mainWindow) {
+      mainWindow.webContents.send('backend-status', 'connecting')
+    }
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow()
+      }
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -280,6 +383,13 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   if (pythonProcess) {
     pythonProcess.kill()
+    // Give it a moment for graceful shutdown
+    const watchdog = setTimeout(() => {
+      if (pythonProcess) {
+        pythonProcess.kill('SIGKILL')
+      }
+    }, 3000)
+    pythonProcess.on('close', () => clearTimeout(watchdog))
     pythonProcess = null
   }
 })

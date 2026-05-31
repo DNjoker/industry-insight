@@ -2,6 +2,8 @@ interface ProgressEvent {
   step: string
   progress: number
   message: string
+  token_usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  estimated_cost?: string
 }
 
 interface Props {
@@ -65,6 +67,14 @@ export default function ProgressStepper({ progress, events }: Props) {
       </div>
 
       <p className="text-sm text-gray-600">{progress.message}</p>
+
+      {/* Token usage */}
+      {progress.token_usage && (
+        <p className="text-xs text-gray-400 mt-1">
+          Token: {progress.token_usage.total_tokens.toLocaleString()}（提示 {progress.token_usage.prompt_tokens.toLocaleString()} + 生成 {progress.token_usage.completion_tokens.toLocaleString()}）
+          {progress.estimated_cost && <span className="ml-2">| 估算费用: {progress.estimated_cost}</span>}
+        </p>
+      )}
 
       {/* Event log */}
       {events.length > 1 && (

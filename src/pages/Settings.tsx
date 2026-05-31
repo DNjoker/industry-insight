@@ -99,21 +99,52 @@ export default function Settings() {
     }
   }
 
+  const KEY_FIELDS = ['deepseek_api_key', 'anthropic_api_key', 'openai_api_key', 'tavily_api_key', 'bing_api_key', 'volcano_api_key'] as const
+
   // Load from localStorage + backend on mount
   useEffect(() => {
     const merged = emptyConfig()
 
-    // Load from localStorage first
-    const local = localStorage.getItem('app-config')
-    if (local) {
-      try {
-        Object.assign(merged, JSON.parse(local))
-      } catch { /* ignore */ }
-    }
+    const loadConfig = async () => {
+      // Migrate old config if needed
+      const oldConfig = localStorage.getItem('app-config')
+      if (oldConfig && !localStorage.getItem('app-config-v1')) {
+        try {
+          const old = JSON.parse(oldConfig)
+          // Old keys were plaintext — encrypt them for the new format
+          const migrated = { ...old }
+          for (const field of KEY_FIELDS) {
+            if (migrated[field] && typeof migrated[field] === 'string' && migrated[field].trim()) {
+              try {
+                migrated[field] = await window.electronAPI?.encryptString(migrated[field].trim()) || migrated[field]
+              } catch { /* leave as-is */ }
+            }
+          }
+          localStorage.setItem('app-config-v1', JSON.stringify(migrated))
+        } catch { /* ignore */ }
+      }
 
-    // Then try to load from backend
-    getBaseUrl().then(async (baseUrl) => {
+      // Load from localStorage, decrypting key fields
+      const local = localStorage.getItem('app-config-v1')
+      if (local) {
+        try {
+          const raw = JSON.parse(local)
+          // Decrypt key fields
+          for (const field of KEY_FIELDS) {
+            if (raw[field] && typeof raw[field] === 'string' && raw[field].length > 0) {
+              try {
+                const decrypted = await window.electronAPI?.decryptString(raw[field])
+                raw[field] = decrypted || ''
+              } catch { /* leave as-is if decryption fails */ }
+            }
+          }
+          Object.assign(merged, raw)
+        } catch { /* ignore */ }
+      }
+
+      // Then try to load from backend
       try {
+        const baseUrl = await getBaseUrl()
         const res = await fetch(`${baseUrl}/api/config`)
         if (res.ok) {
           const bc: BackendConfig = await res.json()
@@ -131,13 +162,25 @@ export default function Settings() {
         setBackendOnline(false)
       }
       setConfig(merged)
-    })
+    }
+
+    loadConfig()
   }, [])
 
   const handleSave = async () => {
-    localStorage.setItem('app-config', JSON.stringify(config))
+    // Encrypt key fields before storing locally
+    const localCopy = { ...config }
+    for (const field of KEY_FIELDS) {
+      const val = localCopy[field]
+      if (val && typeof val === 'string' && val.trim()) {
+        try {
+          localCopy[field] = await window.electronAPI?.encryptString(val.trim()) || val
+        } catch { /* leave as-is */ }
+      }
+    }
+    localStorage.setItem('app-config-v1', JSON.stringify(localCopy))
 
-    // Push to backend
+    // Push plaintext to backend
     try {
       const baseUrl = await getBaseUrl()
       await fetch(`${baseUrl}/api/config`, {
@@ -357,162 +400,36 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* Vision Model */}
-      <section className="mb-8">
-        <h3 className="text-lg font-semibold mb-3">视觉模型（竞品分析）</h3>
-        <p className="text-sm text-gray-500 mb-3">
-          用于竞品主图/详情页的AI识别和评分。支持火山引擎豆包视觉、通义千问视觉等。
-        </p>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">视觉模型</label>
-            <select
-              value={config.volcano_vision_model}
-              onChange={(e) => updateField('volcano_vision_model', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="doubao-seed-1-6-251015">豆包 Seed 1.6 128K（火山引擎，推荐，支持视觉）</option>
-              <option value="doubao-seed-1-6-flash-251015">豆包 Seed 1.6 Flash 32K（火山引擎，快速低价）</option>
-              <option value="doubao-seed-1-6-lite-251015">豆包 Seed 1.6 Lite 32K（火山引擎，轻量）</option>
-              <option value="qwen-vl-max">通义千问 VL Max（阿里云）</option>
-              <option value="gpt-4o">GPT-4o（OpenAI）</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">
-              API Key
-              {config.volcano_vision_model.startsWith('qwen') && '（阿里云 DashScope API Key）'}
-              {config.volcano_vision_model.startsWith('doubao') && '（火山引擎 Ark API Key）'}
-              {config.volcano_vision_model.startsWith('gpt') && '（OpenAI API Key）'}
-            </label>
-            <input
-              type="password"
-              value={config.volcano_api_key}
-              onChange={(e) => updateField('volcano_api_key', e.target.value)}
-              placeholder="输入 API Key..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            {config.volcano_vision_model.startsWith('doubao') && (
-              <p className="text-xs text-gray-400 mt-1">
-                注册地址: <a href="https://console.volcengine.com/ark" target="_blank" rel="noopener noreferrer" className="text-blue-500">console.volcengine.com/ark</a> → 创建推理接入点 → 选择 Doubao Vision Pro 32K
-              </p>
-            )}
-            {config.volcano_vision_model.startsWith('qwen') && (
-              <p className="text-xs text-gray-400 mt-1">
-                注册地址: <a href="https://dashscope.console.aliyun.com" target="_blank" rel="noopener noreferrer" className="text-blue-500">dashscope.console.aliyun.com</a> → 开通通义千问视觉模型
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
+      {/* Vision Model — V3 竞品分析，V1 隐藏 */}
+      {/* 知识库同步 — 策略对谈，V1 隐藏 */}
 
-      {/* 知识库同步 */}
-      <section className="mb-8">
-        <h3 className="text-lg font-semibold mb-3">知识库</h3>
-        <div className="space-y-3 mb-4">
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.preload_knowledge_base as any === true || config.preload_knowledge_base === 'true'}
-              onChange={(e) => setConfig((prev: Config) => ({ ...prev, preload_knowledge_base: e.target.checked as any }))}
-              className="w-4 h-4 accent-blue-600"
-            />
-            <div>
-              <span className="text-sm text-gray-700">启动时预加载知识库模型</span>
-              <p className="text-xs text-gray-400">避免首次提问时的等待，约占用 500MB 内存。如不常使用策略对谈可关闭。</p>
-            </div>
-          </label>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={config.sync_on_startup as any === true || config.sync_on_startup === 'true'}
-              onChange={(e) => setConfig((prev: Config) => ({ ...prev, sync_on_startup: e.target.checked as any }))}
-              className="w-4 h-4 accent-blue-600"
-            />
-            <div>
-              <span className="text-sm text-gray-700">启动时自动同步知识库</span>
-              <p className="text-xs text-gray-400">每次启动应用时自动将 Vault 中的文件索引到向量数据库，确保知识库内容是最新的。</p>
-            </div>
-          </label>
-        </div>
-        <h3 className="text-lg font-semibold mb-3">知识库同步</h3>
-        <p className="text-sm text-gray-500 mb-3">
-          将 Obsidian Vault 中的 Markdown 文件索引到向量数据库，供策略对谈检索。
-        </p>
-
-        <div className="space-y-3 mb-4">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">同步目录</label>
-            <div className="flex gap-4">
-              {['知识卡片', '行业摸底', 'DeepSeek对话'].map(dir => (
-                <label key={dir} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={syncDirs.includes(dir)}
-                    onChange={() => toggleSyncDir(dir)}
-                    className="w-4 h-4 accent-blue-600"
-                  />
-                  <span>{dir}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">目标集合</label>
-            <input
-              type="text"
-              value={syncCollection}
-              onChange={e => setSyncCollection(e.target.value)}
-              className="w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={excludeSources}
-              onChange={(e) => setExcludeSources(e.target.checked)}
-              className="w-4 h-4 accent-blue-600"
-            />
-            <div>
-              <span className="text-sm text-gray-700">仅索引报告和卡片</span>
-              <p className="text-xs text-gray-400">排除 sources/ 原始网页抓取，缩小知识库体积，搜索更精准</p>
-            </div>
-          </label>
-        </div>
-
+      <div className="flex gap-3">
         <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:bg-gray-300 transition-colors"
+          onClick={handleSave}
+          className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300"
         >
-          {syncing ? '同步中...' : '开始同步'}
+          {saved ? '已保存!' : '保存设置'}
         </button>
-
-        {syncResult && (
-          <div className="mt-3 p-3 bg-gray-50 rounded-lg text-sm space-y-1">
-            <p>已索引: <span className="font-medium">{syncResult.indexed}</span> 篇</p>
-            <p>已清理: <span className="font-medium">{syncResult.removed}</span> 篇</p>
-            {syncResult.skipped_sources ? (
-              <p>已跳过: <span className="font-medium text-gray-500">{syncResult.skipped_sources}</span> 篇（原始文章）</p>
-            ) : null}
-            {syncResult.errors?.length > 0 && (
-              <div className="text-red-500">
-                <p className="font-medium mb-1">错误 ({syncResult.errors.length} 个文件):</p>
-                {syncResult.errors.map((err, i) => (
-                  <p key={i} className="text-xs break-all ml-2">• {err}</p>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      <button
-        onClick={handleSave}
-        className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300"
-      >
-        {saved ? '已保存!' : '保存设置'}
-      </button>
+        <button
+          onClick={async () => {
+            try {
+              const baseUrl = await getBaseUrl()
+              const res = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(5000) })
+              if (res.ok) {
+                const data = await res.json()
+                alert(`连接成功!\n模型: ${data.llm_provider || '未知'}\n知识库: ${data.vault_path || '未配置'}`)
+              } else {
+                alert(`连接失败: HTTP ${res.status}`)
+              }
+            } catch {
+              alert('无法连接后端服务。请确认后端已启动。')
+            }
+          }}
+          className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+        >
+          测试连接
+        </button>
+      </div>
     </div>
   )
 }

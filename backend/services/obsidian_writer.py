@@ -95,14 +95,9 @@ def save_report(industry: str, report_md: str, source_paths: list[str]) -> str:
     dir_path = os.path.join(vault, "行业摸底", industry)
     _ensure_dir(dir_path)
 
-    timestamp = datetime.now().strftime("%Y-%m-%d")
-    filename = f"{industry} 行业分析报告.md"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
+    filename = f"{industry} 行业分析报告 ({timestamp}).md"
     filepath = os.path.join(dir_path, filename)
-
-    # If exists, add timestamp
-    if os.path.exists(filepath):
-        filename = f"{industry} 行业分析报告 ({timestamp}).md"
-        filepath = os.path.join(dir_path, filename)
 
     # Source links section
     source_links = "\n".join(
