@@ -67,8 +67,6 @@ async def get_config():
         has_tavily_key=bool(settings.tavily_api_key),
         has_baidu_key=bool(settings.baidu_api_key),
         obsidian_vault_path=get_vault_path(),
-        has_volcano_key=bool(settings.volcano_api_key),
-        volcano_vision_model=settings.volcano_vision_model or "doubao-seed-1-6-251015",
         preload_knowledge_base=settings.preload_knowledge_base,
         sync_on_startup=settings.sync_on_startup,
     )
@@ -108,12 +106,6 @@ async def update_config(data: ConfigUpdate):
     if data.obsidian_vault_path is not None:
         settings.obsidian_vault_path = data.obsidian_vault_path
         env_updates["OBSIDIAN_VAULT_PATH"] = data.obsidian_vault_path
-    if data.volcano_api_key is not None:
-        settings.volcano_api_key = data.volcano_api_key
-        env_updates["VOLCANO_API_KEY"] = data.volcano_api_key
-    if data.volcano_vision_model is not None:
-        settings.volcano_vision_model = data.volcano_vision_model
-        env_updates["VOLCANO_VISION_MODEL"] = data.volcano_vision_model
     if data.preload_knowledge_base is not None:
         settings.preload_knowledge_base = data.preload_knowledge_base
         env_updates["PRELOAD_KNOWLEDGE_BASE"] = "true" if data.preload_knowledge_base else "false"
@@ -135,8 +127,6 @@ async def update_config(data: ConfigUpdate):
         has_tavily_key=bool(settings.tavily_api_key),
         has_baidu_key=bool(settings.baidu_api_key),
         obsidian_vault_path=get_vault_path(),
-        has_volcano_key=bool(settings.volcano_api_key),
-        volcano_vision_model=settings.volcano_vision_model or "doubao-seed-1-6-251015",
         preload_knowledge_base=settings.preload_knowledge_base,
         sync_on_startup=settings.sync_on_startup,
     )

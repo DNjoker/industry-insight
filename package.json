@@ -1,8 +1,8 @@
 {
-  "name": "info-aggregator",
-  "author": "info-aggregator",
-  "version": "0.2.0",
-  "description": "知识加工台 - 信息搜集、拆解、复盘",
+  "name": "industry-insight",
+  "author": "DNjoker",
+  "version": "0.1.0",
+  "description": "行业摸底工具 — 一键生成结构化行业分析报告，支持多角色视角和地域深度分析",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",

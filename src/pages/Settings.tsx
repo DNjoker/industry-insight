@@ -12,8 +12,6 @@ interface Config {
   tavily_api_key: string
   baidu_api_key: string
   obsidian_vault_path: string
-  volcano_api_key: string
-  volcano_vision_model: string
   preload_knowledge_base: boolean
   sync_on_startup: boolean
 }
@@ -29,8 +27,6 @@ interface BackendConfig {
   has_tavily_key: boolean
   has_baidu_key: boolean
   obsidian_vault_path: string | null
-  has_volcano_key: boolean
-  volcano_vision_model: string
   preload_knowledge_base: boolean
   sync_on_startup: boolean
 }
@@ -47,8 +43,6 @@ function emptyConfig(): Config {
     tavily_api_key: '',
     baidu_api_key: '',
     obsidian_vault_path: '',
-    volcano_api_key: '',
-    volcano_vision_model: 'doubao-seed-1-6-251015',
     preload_knowledge_base: false,
     sync_on_startup: false,
   }
@@ -99,7 +93,7 @@ export default function Settings() {
     }
   }
 
-  const KEY_FIELDS = ['deepseek_api_key', 'anthropic_api_key', 'openai_api_key', 'tavily_api_key', 'baidu_api_key', 'volcano_api_key'] as const
+  const KEY_FIELDS = ['deepseek_api_key', 'anthropic_api_key', 'openai_api_key', 'tavily_api_key', 'baidu_api_key'] as const
 
   // Load from localStorage + backend on mount
   useEffect(() => {
@@ -153,7 +147,6 @@ export default function Settings() {
           merged.openai_base_url = bc.openai_base_url || merged.openai_base_url
           merged.search_engine = bc.search_engine || merged.search_engine
           merged.obsidian_vault_path = bc.obsidian_vault_path || merged.obsidian_vault_path
-          merged.volcano_vision_model = bc.volcano_vision_model || merged.volcano_vision_model
           merged.preload_knowledge_base = bc.preload_knowledge_base ?? merged.preload_knowledge_base
           merged.sync_on_startup = bc.sync_on_startup ?? merged.sync_on_startup
           setBackendOnline(true)
@@ -197,8 +190,6 @@ export default function Settings() {
           tavily_api_key: config.tavily_api_key || null,
           baidu_api_key: config.baidu_api_key || null,
           obsidian_vault_path: config.obsidian_vault_path || null,
-          volcano_api_key: config.volcano_api_key || null,
-          volcano_vision_model: config.volcano_vision_model || null,
           preload_knowledge_base: config.preload_knowledge_base,
           sync_on_startup: config.sync_on_startup,
         }),

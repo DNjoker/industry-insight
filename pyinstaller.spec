@@ -213,9 +213,6 @@ a = Analysis(
         "backend.models.prompts",
         "backend.routes",
         "backend.routes.scan",
-        "backend.routes.extract",
-        "backend.routes.strategy",
-        "backend.routes.chat",
         "backend.routes.config",
         "backend.routes.discover",
         "backend.routes.embeddings",
@@ -224,12 +221,9 @@ a = Analysis(
         "backend.services.llm_client",
         "backend.services.embedding_service",
         "backend.services.content_extractor",
-        "backend.services.knowledge_extractor",
         "backend.services.obsidian_writer",
         "backend.services.web_search",
         "backend.services.ai_analyzer",
-        "backend.services.cache_service",
-
         # stdlib modules sometimes missed
         "asyncio",
         "concurrent.futures",

@@ -3,8 +3,6 @@ export interface ElectronAPI {
   selectFolder: () => Promise<string | null>
   openFolder: (path: string) => Promise<string>
   selectReport: () => Promise<string | null>
-  downloadImages: (urls: string[]) => Promise<string[]>
-  captureWebview: (webContentsId: number) => Promise<any>
   openExternal: (url: string) => Promise<void>
   onBackendStatus: (callback: (status: string) => void) => void
   encryptString: (plaintext: string) => Promise<string>

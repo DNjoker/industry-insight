@@ -24,10 +24,9 @@ interface TrendingItem {
 
 interface Props {
   prefillKeyword?: string
-  onTriggerSellingPoint?: (category: string, reportPath: string) => void
 }
 
-export default function IndustryScan({ prefillKeyword, onTriggerSellingPoint }: Props) {
+export default function IndustryScan({ prefillKeyword }: Props) {
   const [industry, setIndustry] = useState(prefillKeyword || '')
   const [timeRange, setTimeRange] = useState('month')
   const [role, setRole] = useState('general')

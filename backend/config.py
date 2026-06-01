@@ -27,11 +27,6 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = None
     openai_base_url: Optional[str] = None  # for openai-compatible providers
 
-    # Volcano (Doubao) Vision
-    volcano_api_key: Optional[str] = None
-    volcano_vision_model: str = "doubao-seed-1-6-251015"
-    volcano_base_url: str = "https://ark.cn-beijing.volces.com/api/v3"
-
     # Search
     search_engine: str = "baidu"  # baidu | tavily | direct
     tavily_api_key: Optional[str] = None
@@ -46,8 +41,6 @@ class Settings(BaseSettings):
     # Embedding
     embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
     embedding_device: str = "cpu"
-    preload_knowledge_base: bool = False  # Preload embedding model on startup
-    sync_on_startup: bool = False  # Auto-sync vault to knowledge base on startup
 
 
 settings = Settings()

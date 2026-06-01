@@ -3,8 +3,6 @@ import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import net from 'net'
 import fs from 'fs'
-import https from 'https'
-import http from 'http'
 import treeKill from 'tree-kill'
 
 let mainWindow: BrowserWindow | null = null
@@ -97,7 +95,6 @@ function startPythonBackend(): void {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: {
         ...process.env,
-        V1_MODE: 'true',
         CHROMA_DATA_DIR: userDataPath,
         DOTENV_PATH: dotenvTarget,
         BACKEND_HOST: '127.0.0.1',
@@ -249,67 +246,6 @@ function setupIpcHandlers(): void {
     return result.filePaths[0]
   })
 
-  ipcMain.handle('download-images', async (_event, urls: string[]) => {
-    const tempDir = path.join(app.getPath('temp'), 'competitor-images')
-    fs.mkdirSync(tempDir, { recursive: true })
-
-    const results: (string | null)[] = new Array(urls.length).fill(null)
-    const batchSize = 8
-    for (let start = 0; start < urls.length; start += batchSize) {
-      const batch = urls.slice(start, start + batchSize).map(async (url, batchIdx) => {
-        const i = start + batchIdx
-        try {
-          const ext = url.match(/\.(png|jpg|jpeg|webp)(\?|$)/i)?.[1] || 'png'
-          const filename = `${Date.now()}_${i}.${ext}`
-          const filepath = path.join(tempDir, filename)
-          await downloadFile(url, filepath)
-          results[i] = filepath
-        } catch (e) {
-          console.error(`Failed to download ${url}:`, e)
-        }
-      })
-      await Promise.all(batch)
-    }
-    return results.filter(Boolean) as string[]
-  })
-
-  ipcMain.handle('capture-webview', async (_event, webContentsId: number) => {
-    try {
-      const wc = (global as any).__webContentsMap?.get(webContentsId)
-        || require('electron').webContents.fromId(webContentsId)
-      if (!wc) return { error: 'WebContents not found' }
-
-      const result = await wc.executeJavaScript(`
-        (function() {
-          const images = [];
-          document.querySelectorAll('img').forEach(img => {
-            const src = img.src || img.getAttribute('data-src') || '';
-            if (src && src.startsWith('http') && img.naturalWidth > 200) {
-              images.push({ url: src, width: img.naturalWidth, height: img.naturalHeight, alt: img.alt || '' });
-            }
-          });
-          const textElements = [];
-          document.querySelectorAll('h1,h2,h3,h4,.title,.sellpoint,.desc,p').forEach(el => {
-            const text = el.textContent?.trim();
-            if (text && text.length > 5 && text.length < 500) {
-              textElements.push({ tag: el.tagName, text: text.substring(0, 300) });
-            }
-          });
-          return {
-            title: document.title,
-            url: location.href,
-            images: images.slice(0, 30),
-            texts: textElements.slice(0, 50),
-            bodyText: document.body?.innerText?.substring(0, 3000) || '',
-          };
-        })()
-      `)
-      return result
-    } catch (e: any) {
-      return { error: e.message }
-    }
-  })
-
   // ---- Encrypted storage ----
   ipcMain.handle('encrypt-string', async (_event, plaintext: string) => {
     if (!plaintext) return ''
@@ -359,26 +295,6 @@ function setupIpcHandlers(): void {
       }
       return { success: false, message: '后端重启失败，请检查后端日志' }
     }
-  })
-}
-
-function downloadFile(url: string, dest: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const protocol = url.startsWith('https') ? https : http
-    protocol.get(url, (res) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        downloadFile(res.headers.location, dest).then(resolve).catch(reject)
-        return
-      }
-      if (res.statusCode && res.statusCode >= 400) {
-        reject(new Error(`HTTP ${res.statusCode} for ${url}`))
-        return
-      }
-      const file = fs.createWriteStream(dest)
-      res.pipe(file)
-      file.on('finish', () => { file.close(); resolve() })
-      file.on('error', reject)
-    }).on('error', reject)
   })
 }
 

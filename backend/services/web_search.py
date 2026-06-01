@@ -1,13 +1,10 @@
 """Multi-engine web search with time range support."""
 
 import asyncio
+import re
 import logging
 import random
-import re
-from datetime import datetime, timedelta
-from urllib.parse import quote
 import httpx
-from bs4 import BeautifulSoup
 from backend.config import settings
 from backend.models.schemas import SearchResult
 
@@ -54,14 +51,6 @@ async def _translate_industry(industry: str) -> str:
     fallback = re.sub(r'[一-鿿]+', '', industry).strip()
     _translation_cache[industry] = fallback
     return fallback
-
-
-def _is_english_query(query: str) -> bool:
-    """Detect if a query is primarily English (majority ASCII, minimal CJK)."""
-    cjk = sum(1 for ch in query if '一' <= ch <= '鿿' or '぀' <= ch <= 'ヿ' or '가' <= ch <= '힯')
-    total = len(query) or 1
-    # If CJK is less than 30% of the query, treat as English
-    return cjk / total < 0.3
 
 
 SEARCH_QUERIES = {
@@ -145,164 +134,6 @@ class TavilyEngine(SearchEngine):
             ]
 
 
-class DirectEngine(SearchEngine):
-    """Direct scraping of Baidu/Bing search results (no API key needed)."""
-
-    async def search(self, query: str, max_results: int, time_range: str) -> list[SearchResult]:
-        if _is_english_query(query):
-            # English queries: use international Bing only
-            return (await self._search_bing_intl(query, max_results))[:max_results]
-
-        # Chinese queries: Bing CN first, then Baidu after a short delay (avoid rate-limit)
-        bing_results = await self._search_bing_cn(query, max_results)
-        await asyncio.sleep(0.5)
-        baidu_results = await self._search_baidu(query, max_results)
-
-        # Merge: Bing first (usually better), then Baidu for fill
-        seen = set()
-        merged = []
-        for r in bing_results + baidu_results:
-            if r.url not in seen:
-                seen.add(r.url)
-                merged.append(r)
-        return merged[:max_results]
-
-    # Rotating User-Agents to reduce blocking
-    _USER_AGENTS = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    ]
-    _ua_idx = 0
-
-    def _next_ua(self) -> str:
-        ua = self._USER_AGENTS[self._ua_idx % len(self._USER_AGENTS)]
-        self._ua_idx += 1
-        return ua
-
-    def _browser_headers(self, lang: str = "zh-CN,zh;q=0.9") -> dict:
-        return {
-            "User-Agent": self._next_ua(),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": lang,
-            "Accept-Encoding": "gzip, deflate, br",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Cache-Control": "max-age=0",
-        }
-
-    def _parse_bing_results(self, soup: BeautifulSoup, query_hint: str = "") -> list[SearchResult]:
-        """Parse Bing search results with multiple fallback selectors."""
-        results = []
-        # Try multiple container selectors
-        items = soup.select("li.b_algo") or soup.select("#b_results > li.b_algo") or soup.select("ol#b_results > li")
-        if not items:
-            # Diagnostic: check if we're getting a captcha/block page
-            page_text = soup.get_text()[:300]
-            logger.warning(f"Bing parse: 0 result items for '{query_hint}'. Page preview: {page_text}")
-        for item in items:
-            title_el = item.select_one("h2 a") or item.select_one("a[href]")
-            if not title_el:
-                continue
-            href = title_el.get("href", "")
-            if not href or not href.startswith("http"):
-                continue
-            snippet_el = (
-                item.select_one(".b_caption p") or
-                item.select_one(".b_lineclamp2") or
-                item.select_one(".b_caption") or
-                item.select_one("p")
-            )
-            results.append(SearchResult(
-                title=title_el.get_text(strip=True),
-                url=href,
-                snippet=snippet_el.get_text(strip=True) if snippet_el else "",
-            ))
-        return results
-
-    def _parse_baidu_results(self, soup: BeautifulSoup, query_hint: str = "") -> list[SearchResult]:
-        """Parse Baidu search results with multiple fallback selectors."""
-        results = []
-        items = (
-            soup.select(".result.c-container") or
-            soup.select("div.result") or
-            soup.select(".c-container") or
-            soup.select("div[class*='result']")
-        )
-        if not items:
-            page_text = soup.get_text()[:300]
-            logger.warning(f"Baidu parse: 0 result items for '{query_hint}'. Page preview: {page_text}")
-        for item in items:
-            title_el = item.select_one("h3 a") or item.select_one("a[href]")
-            if not title_el:
-                continue
-            href = title_el.get("href", "")
-            if not href:
-                continue
-            snippet_el = (
-                item.select_one(".c-abstract") or
-                item.select_one(".content-right_8Zs40") or
-                item.select_one("span.content-right_2VFww") or
-                item.select_one(".c-span-last") or
-                item.select_one("p")
-            )
-            results.append(SearchResult(
-                title=title_el.get_text(strip=True),
-                url=href,
-                snippet=snippet_el.get_text(strip=True) if snippet_el else "",
-            ))
-        return results
-
-    async def _search_bing_cn(self, query: str, max_results: int) -> list[SearchResult]:
-        try:
-            # cn.bing.com is dead (301→www.bing.com), use www.bing.com with zh-CN market
-            url = f"https://www.bing.com/search?q={quote(query)}&count={max_results}&mkt=zh-CN"
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                response = await client.get(url, headers=self._browser_headers("zh-CN,zh;q=0.9"))
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "lxml")
-                results = self._parse_bing_results(soup)
-                logger.debug(f"Bing CN: {len(results)} results for '{query[:40]}'")
-                return results
-        except Exception as e:
-            logger.warning(f"Bing CN direct search failed: {e}")
-            return []
-
-    async def _search_bing_intl(self, query: str, max_results: int) -> list[SearchResult]:
-        try:
-            url = f"https://www.bing.com/search?q={quote(query)}&count={max_results}"
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                response = await client.get(url, headers=self._browser_headers("en-US,en;q=0.9"))
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "lxml")
-                results = self._parse_bing_results(soup)
-                logger.debug(f"Bing INTL: {len(results)} results for '{query[:40]}'")
-                return results
-        except Exception as e:
-            logger.warning(f"Bing international direct search failed: {e}")
-            return []
-
-    async def _search_baidu(self, query: str, max_results: int) -> list[SearchResult]:
-        try:
-            url = f"https://www.baidu.com/s?wd={quote(query)}&rn={max_results}"
-            async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-                response = await client.get(url, headers=self._browser_headers("zh-CN,zh;q=0.9"))
-                response.raise_for_status()
-                soup = BeautifulSoup(response.text, "lxml")
-                results = self._parse_baidu_results(soup)
-                logger.debug(f"Baidu: {len(results)} results for '{query[:40]}'")
-                return results
-        except Exception as e:
-            logger.warning(f"Baidu search failed: {e}")
-            return []
-
-
 class BaiduEngine(SearchEngine):
     """Baidu AI Search API (千帆 AppBuilder) — best Chinese search quality, 1500 free/month."""
 
@@ -362,42 +193,23 @@ class BaiduEngine(SearchEngine):
 ENGINES = {
     "tavily": TavilyEngine,
     "baidu": BaiduEngine,
-    "direct": DirectEngine,
 }
-
-_primary_failed: bool = False  # Remember Tavily failure within session
 
 
 def _get_engine() -> SearchEngine:
-    """Get configured search engine, skip Tavily if known to be down."""
-    global _primary_failed
-    preferred = getattr(settings, "search_engine", "tavily") or "tavily"
-    if _primary_failed and preferred == "tavily":
-        return DirectEngine()
-    engine_class = ENGINES.get(preferred, TavilyEngine)
+    preferred = getattr(settings, "search_engine", "baidu") or "baidu"
+    engine_class = ENGINES.get(preferred, BaiduEngine)
     return engine_class()
 
 
 async def search(query: str, max_results: int = 10, time_range: str = "month") -> list[SearchResult]:
-    """Search with primary engine, fallback to direct scraping on failure."""
-    global _primary_failed
     engine = _get_engine()
     try:
         results = await engine.search(query, max_results, time_range)
         if results:
             return results
     except Exception as e:
-        logger.warning(f"Primary search engine failed: {e}")
-
-    # Fallback to direct scraping — only for Tavily (Baidu API failures are rare, DirectEngine is broken anyway)
-    if isinstance(engine, TavilyEngine):
-        _primary_failed = True
-        logger.info("Falling back to direct search...")
-        try:
-            fallback = DirectEngine()
-            return await fallback.search(query, max_results, time_range)
-        except Exception as e:
-            logger.error(f"Fallback search also failed: {e}")
+        logger.warning(f"Search engine failed: {e}")
 
     return []
 
