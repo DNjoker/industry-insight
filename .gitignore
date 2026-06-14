@@ -13,3 +13,6 @@ pyinstaller-dist/
 logs/
 models/
 build/
+
+# Scan output files
+*scan*.json

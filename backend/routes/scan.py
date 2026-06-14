@@ -56,7 +56,7 @@ async def scan_industry_stream(request: ScanRequest):
         await asyncio.sleep(0.1)
 
         try:
-            search_results = await search_all(industry, time_range=request.time_range, overseas=request.overseas, location=request.location)
+            search_results = await search_all(industry, time_range=request.time_range, overseas=request.overseas, location=request.location, seasonal_deep=request.seasonal_deep)
         except Exception as e:
             logger.error(f"Search failed: {e}")
             yield _event("error", 5, f"搜索失败: {e}")
@@ -119,7 +119,7 @@ async def scan_industry_stream(request: ScanRequest):
         yield _event("extract", 55, f"信源筛选完成: {original_count}→{len(search_results)} 篇")
 
         # Cache results for potential section regeneration
-        cache_search_results(industry, request.role, request.location, search_results, overseas=request.overseas)
+        cache_search_results(industry, request.role, request.location, search_results, overseas=request.overseas, seasonal_deep=request.seasonal_deep)
 
         # === Step 3: AI Analysis ===
         yield _event("analyze", 60, "开始 AI 分析...")
@@ -127,7 +127,7 @@ async def scan_industry_stream(request: ScanRequest):
         report_content = ""
         try:
             report_content = await analyze_industry_streaming(
-                industry, search_results, progress_callback, role=request.role, location=request.location, overseas=request.overseas
+                industry, search_results, progress_callback, role=request.role, location=request.location, overseas=request.overseas, seasonal_deep=request.seasonal_deep
             )
         except Exception as e:
             logger.error(f"Analysis failed: {e}")

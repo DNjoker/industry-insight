@@ -72,6 +72,33 @@ SEARCH_QUERIES_EN = {
     "ops": "{industry} competitor analysis case study business model strategy breakdown",
 }
 
+# Seasonal supplement search queries — added alongside standard queries when seasonal_deep=True
+SEASONAL_SEARCH_QUERIES = {
+    "seasonal_rhythm": "{industry} 淡季 旺季 销售节奏 月度销量 季节性波动 波峰 波谷",
+    "seasonal_rhythm2": "{industry} 年度趋势 同比变化 增长 萎缩 月份对比 销售数据",
+    "regional_diff": "{industry} 南北方差异 区域 华南 华北 东北 气候影响 购买偏好 地域",
+    "regional_diff2": "{industry} 各地区 市场差异 消费习惯 价格差异 区域数据 本地化",
+    "festival_calendar": "{industry} 618 双11 年货节 38女王节 大促节点 促销节奏 备货提前量",
+    "festival_calendar2": "{industry} 节日促销 节点营销 活动策划 爆发系数 预热 开门红 返场",
+    "category_season": "{industry} 品类差异 子类目 分类对比 季节表现 旺季淡季 价格调整",
+    "category_season2": "{industry} 各品类 季节性 适用场景 购买动机 连带率 价格带",
+    "regional_sku": "{industry} 区域选品 SKU策略 选款 本地化 爆品特征 区域专供",
+    "regional_sku2": "{industry} 跨区调货 串货 区域定价 库存调配 供应链 区域策略",
+    "inventory_rhythm": "{industry} 备货 安全库存 周转天数 仓储 资金占用 进货节奏",
+    "inventory_rhythm2": "{industry} 大促备货 清仓 库存管理 供应链弹性 补货周期 压货风险",
+}
+
+# English queries for seasonal supplement (overseas mode)
+SEASONAL_SEARCH_QUERIES_EN = {
+    "seasonal_rhythm": "{industry} seasonal sales pattern peak season off-season monthly trend consumer demand cycle",
+    "regional_diff": "{industry} regional difference north south climate consumer behavior geography China market",
+    "festival_calendar": "{industry} shopping festival Singles Day 618 Chinese New Year promotion calendar sales spike",
+    "category_season": "{industry} product category seasonality subcategory comparison pricing strategy bestseller by season",
+    "regional_sku": "{industry} regional assortment SKU strategy localization product selection inventory allocation",
+    "inventory_rhythm": "{industry} inventory management safety stock replenishment lead time supply chain warehouse strategy",
+}
+
+
 TIME_SUFFIX = {
     "week": " 2025 2026 最新",
     "month": " 2025 2026",
@@ -87,6 +114,17 @@ def build_queries(industry: str, time_range: str = "month", overseas: bool = Fal
         en_suffix = " 2025 2026"
         en_name = industry_en or industry
         for key, tmpl in SEARCH_QUERIES_EN.items():
+            queries[f"{key}_en"] = tmpl.format(industry=en_name) + en_suffix
+    return queries
+
+
+def build_seasonal_queries(industry: str, time_range: str = "month", overseas: bool = False, industry_en: str = "") -> dict[str, str]:
+    suffix = TIME_SUFFIX.get(time_range, "")
+    queries = {key: tmpl.format(industry=industry) + suffix for key, tmpl in SEASONAL_SEARCH_QUERIES.items()}
+    if overseas:
+        en_suffix = " 2025 2026"
+        en_name = industry_en or industry
+        for key, tmpl in SEASONAL_SEARCH_QUERIES_EN.items():
             queries[f"{key}_en"] = tmpl.format(industry=en_name) + en_suffix
     return queries
 
@@ -214,7 +252,7 @@ async def search(query: str, max_results: int = 10, time_range: str = "month") -
     return []
 
 
-async def search_all(industry: str, time_range: str = "month", overseas: bool = False, location: str = "") -> list[SearchResult]:
+async def search_all(industry: str, time_range: str = "month", overseas: bool = False, location: str = "", seasonal_deep: bool = False) -> list[SearchResult]:
     """Run all search queries and return deduplicated results."""
     enhanced = industry
     if len(industry) <= 2:
@@ -224,6 +262,12 @@ async def search_all(industry: str, time_range: str = "month", overseas: bool = 
     industry_en = await _translate_industry(enhanced)
 
     queries = build_queries(enhanced, time_range, overseas=overseas, industry_en=industry_en)
+
+    # Seasonal deep-dive: add seasonal supplement queries alongside normal ones
+    if seasonal_deep:
+        seasonal_extra = build_seasonal_queries(enhanced, time_range, overseas=False, industry_en="")
+        seasonal_extra = {f"supplement_seasonal_{k}": v for k, v in seasonal_extra.items()}
+        queries = {**queries, **seasonal_extra}
 
     # Silent English supplement for normal mode — fills Chinese data gaps with global perspective
     # Skip for Baidu engine: native Chinese search quality is excellent, no supplement needed

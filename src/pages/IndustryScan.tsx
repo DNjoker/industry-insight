@@ -32,6 +32,7 @@ export default function IndustryScan({ prefillKeyword }: Props) {
   const [role, setRole] = useState('general')
   const [location, setLocation] = useState('')
   const [overseas, setOverseas] = useState(false)
+  const [seasonalDeep, setSeasonalDeep] = useState(false)
 
   useEffect(() => {
     if (prefillKeyword) setIndustry(prefillKeyword)
@@ -161,6 +162,7 @@ export default function IndustryScan({ prefillKeyword }: Props) {
     setRole('general')
     setLocation('')
     setOverseas(false)
+    setSeasonalDeep(false)
     setProgress([])
     setReportPath(null)
     setError(null)
@@ -262,7 +264,7 @@ export default function IndustryScan({ prefillKeyword }: Props) {
       const response = await fetch(`${baseUrl}/api/scan/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ industry: query.trim(), time_range: timeRange, role, location, overseas }),
+        body: JSON.stringify({ industry: query.trim(), time_range: timeRange, role, location, overseas, seasonal_deep: seasonalDeep }),
         signal: controller.signal,
       })
 
@@ -483,6 +485,24 @@ export default function IndustryScan({ prefillKeyword }: Props) {
         </button>
         <span className="text-xs text-gray-400">
           {overseas ? '启用双语搜索与跨境专属章节' : '默认国内视角'}
+        </span>
+      </div>
+
+      {/* Seasonal deep-dive toggle */}
+      <div className="flex items-center gap-2 mb-6">
+        <input
+          type="checkbox"
+          id="seasonal-deep"
+          checked={seasonalDeep}
+          onChange={(e) => setSeasonalDeep(e.target.checked)}
+          disabled={scanning}
+          className="w-4 h-4 text-orange-600 border-gray-300 rounded focus:ring-orange-500"
+        />
+        <label htmlFor="seasonal-deep" className="text-sm text-gray-600 select-none">
+          深入季节/地域分析
+        </label>
+        <span className="text-xs text-gray-400">
+          追加销售节奏、区域差异、备货策略附录
         </span>
       </div>
 

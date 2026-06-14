@@ -26,6 +26,9 @@ from backend.models.prompts import (
     OVERSEAS_SYSTEM_MODIFIER,
     OVERSEAS_SECTION_REPLACEMENTS,
     OVERSEAS_SECTION_MODIFIERS,
+    SEASONAL_APPENDIX_SYSTEM_MODIFIER,
+    SEASONAL_APPENDIX_PROMPT,
+    SEASONAL_APPENDIX_ROLE_MODIFIERS,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,15 +110,15 @@ _search_cache: dict[str, tuple[float, list[SearchResult]]] = {}
 _CACHE_TTL = 1800
 
 
-def cache_search_results(industry: str, role: str, location: str, results: list[SearchResult], overseas: bool = False):
+def cache_search_results(industry: str, role: str, location: str, results: list[SearchResult], overseas: bool = False, seasonal_deep: bool = False):
     """Store search results for later section regeneration."""
-    key = f"{industry}::{role}::{location}::{overseas}"
+    key = f"{industry}::{role}::{location}::{overseas}::{seasonal_deep}"
     _search_cache[key] = (time.time(), results)
 
 
-def get_cached_results(industry: str, role: str, location: str = "", overseas: bool = False) -> list[SearchResult] | None:
+def get_cached_results(industry: str, role: str, location: str = "", overseas: bool = False, seasonal_deep: bool = False) -> list[SearchResult] | None:
     """Get cached search results if still valid."""
-    key = f"{industry}::{role}::{location}::{overseas}"
+    key = f"{industry}::{role}::{location}::{overseas}::{seasonal_deep}"
     entry = _search_cache.get(key)
     if entry is None:
         return None
@@ -306,7 +309,32 @@ async def analyze_industry(industry: str, search_results: list[SearchResult], ro
     return report
 
 
-async def analyze_industry_streaming(industry: str, search_results: list[SearchResult], progress_callback, role: str = "general", location: str = "", overseas: bool = False):
+async def _generate_seasonal_appendix(industry: str, report_summary: str, search_results: list[SearchResult], role: str, combined_modifier: str) -> str:
+    """Generate a seasonal/regional deep-dive appendix to append after the standard report."""
+    role_appendix_mod = SEASONAL_APPENDIX_ROLE_MODIFIERS.get(role, "")
+    matched = _build_context(search_results, max_articles=20, max_content=3000)
+
+    summary_short = report_summary[:1500] + "..." if len(report_summary) > 1500 else report_summary
+
+    user_msg = SEASONAL_APPENDIX_PROMPT.format(
+        industry=industry,
+        report_summary=summary_short,
+        role_appendix_modifier=role_appendix_mod,
+        context=matched,
+    )
+    messages = [
+        {"role": "system", "content": SEASONAL_APPENDIX_SYSTEM_MODIFIER},
+        {"role": "user", "content": user_msg},
+    ]
+    try:
+        content = await chat(messages, temperature=0.7)
+        return content
+    except Exception as e:
+        logger.error(f"Failed to generate seasonal appendix: {e}")
+        return f"*季节深度分析生成失败: {e}*"
+
+
+async def analyze_industry_streaming(industry: str, search_results: list[SearchResult], progress_callback, role: str = "general", location: str = "", overseas: bool = False, seasonal_deep: bool = False):
     """Analyze with streaming progress updates via callback. Auto-detects industry vs product."""
 
     role_perspective = ROLE_PERSPECTIVES.get(role, ROLE_PERSPECTIVES["general"])
@@ -451,7 +479,6 @@ async def analyze_industry_streaming(industry: str, search_results: list[SearchR
     sections.update(dict(phase2_results))
     usage = get_cumulative_usage()
     estimated_cost = estimate_cost(usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
-    await progress_callback("analyze", 97, f"报告生成完成", token_usage=usage, estimated_cost=estimated_cost)
 
     # Assemble report in inverted pyramid order
     report = report_title
@@ -469,5 +496,12 @@ async def analyze_industry_streaming(industry: str, search_results: list[SearchR
     # 3. Source grading last
     if "source_audit" in sections:
         report += "\n\n---\n\n" + sections["source_audit"] + "\n"
+
+    # 4. Seasonal deep-dive appendix (if requested)
+    if seasonal_deep:
+        await progress_callback("analyze", 97, "正在生成季节与地域深度分析附录...")
+        appendix = await _generate_seasonal_appendix(industry, report_body, search_results, role, combined_modifier)
+        report += "\n\n---\n\n" + appendix + "\n"
+        await progress_callback("analyze", 99, "季节地域分析完成")
 
     return report

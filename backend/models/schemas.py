@@ -8,6 +8,7 @@ class ScanRequest(BaseModel):
     role: str = "general"  # general, factory, brand, dealer, investor, government
     location: str = ""  # optional location context, e.g. "广西贺州", "浙江杭州"
     overseas: bool = False  # cross-border/overseas mode — enables bilingual search + overseas chapters
+    seasonal_deep: bool = False  # append seasonal/regional deep-dive appendix to report
 
 
 class ScanProgress(BaseModel):
