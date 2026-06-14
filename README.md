@@ -6,7 +6,8 @@
 
 - **多维度分析**：价值链、竞争格局、主要玩家、消费者行为、经营打法、推广渠道、爆品趋势、素材定价
 - **6种角色视角**：工厂/品牌方/经销商/投资人/政府/通用，每种角色有定制化的分析侧重点
-- **地域深度分析**：支持指定城市/区域，结合本地市场特征给出具体判断（如"北京经销商代理分析"）
+- **季节/地域深度分析**：大促节奏、七区差异、备货周期，自动追加实操附录
+- **地域定位分析**：支持指定城市/区域，结合本地市场特征给出具体判断
 - **信源质量筛选**：基于域名权威度、内容长度、时效性的三维评分，自动过滤低质文章
 - **章节重写**：对报告不满意的小节可单独重新生成，无需重跑整个报告
 - **出海跨境模式**：可选海外视角，双语搜索，聚焦目标市场准入和跨境物流
@@ -40,15 +41,16 @@ source venv/Scripts/activate  # Windows
 # source venv/bin/activate    # macOS/Linux
 pip install -r backend/requirements.txt
 
-# 5. 启动开发模式
-# Windows: 双击 scripts/dev.bat
-# 其他: npm run dev (前端) + uvicorn backend.main:app (后端)
+# 5. 启动
+# Windows: 双击 scripts/dev.bat（自动启动后端 + 前端）
+# macOS/Linux: 开两个终端，一个跑 uvicorn backend.main:app --host 127.0.0.1 --port 19877
+#              另一个跑 npm run dev
 ```
 
 ### 打包安装程序
 
 ```bash
-# 下载嵌入模型（首次需要）
+# (可选) 下载嵌入模型 — 跳过不影响行业摸底功能，跳过可节省约 1GB 空间
 npm run download:model
 
 # 打包 Python 后端
@@ -70,7 +72,7 @@ npm run electron:package
 │   │   ├── scan.py         # 核心扫描流程（SSE 流式）
 │   │   ├── config.py       # 配置读写
 │   │   ├── discover.py     # 行业发现（趋势词、自动补全）
-│   │   ├── embedings.py    # ChromaDB 向量索引
+│   │   ├── embeddings.py   # ChromaDB 向量索引
 │   │   ├── obsidian.py     # Obsidian 文件操作
 │   │   └── search.py       # 搜索代理
 │   └── services/
