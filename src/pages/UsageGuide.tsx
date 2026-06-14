@@ -9,7 +9,7 @@ export default function UsageGuide() {
         <div className="space-y-3 text-sm text-gray-700">
           <div className="flex gap-2">
             <span className="text-blue-500 font-bold shrink-0">1.</span>
-            <span>前往 <strong>设置</strong> 页，填入 DeepSeek API Key 和 Tavily API Key。不知道在哪里获取？往下看。</span>
+            <span>前往 <strong>设置</strong> 页，填入 DeepSeek API Key 和百度千帆 API Key。两个都是免费的，不知道在哪里获取？往下看。</span>
           </div>
           <div className="flex gap-2">
             <span className="text-blue-500 font-bold shrink-0">2.</span>
@@ -46,19 +46,19 @@ export default function UsageGuide() {
               <tr>
                 <td className="px-4 py-2 border-b font-medium">联网搜索</td>
                 <td className="px-4 py-2 border-b">
-                  Tavily（推荐，需 VPN）<br />
-                  <span className="text-gray-400 text-xs">也支持 Bing API（国内可用）</span>
+                  百度千帆 AppBuilder（推荐，国内直接用）<br />
+                  <span className="text-gray-400 text-xs">也支持 Tavily（海外内容，需 VPN）</span>
                 </td>
                 <td className="px-4 py-2 border-b">
-                  <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">tavily.com</a>
+                  <a href="https://console.bce.baidu.com/ai-engine/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">console.bce.baidu.com</a>
                 </td>
-                <td className="px-4 py-2 border-b text-green-600">免费 1000 次/月</td>
+                <td className="px-4 py-2 border-b text-green-600">免费 1500 次/月</td>
               </tr>
             </tbody>
           </table>
         </div>
         <p className="text-xs text-gray-400 mt-2">
-          没有 VPN 注册不了 Tavily？联系客服，免费远程协助注册。
+          百度千帆国内直接访问，注册即用。Tavily 需要 VPN，海外市场搜索更优。
         </p>
       </section>
 
@@ -81,12 +81,21 @@ export default function UsageGuide() {
             </ul>
           </div>
           <div>
+            <h4 className="font-bold text-gray-800">可选配置</h4>
+            <ul className="list-disc ml-5 mt-1 space-y-1">
+              <li><strong>报告视角</strong>：工厂/品牌方/经销商/投资人/政府，不同角色侧重不同维度</li>
+              <li><strong>所在地</strong>：填入城市或区域（如"广西贺州"），报告会结合本地市场特征分析</li>
+              <li><strong>出海/跨境</strong>：启用双语搜索，追加跨境价值链和海外平台对比</li>
+              <li><strong>深入季节/地域分析</strong>：在报告末尾追加销售节奏、七区差异、备货策略附录，适合需要实操指导的经销商和品牌方</li>
+            </ul>
+          </div>
+          <div>
             <h4 className="font-bold text-gray-800">分析流程</h4>
-            <p className="mt-1">搜索 → 抓取网页内容 → AI 分析 → 保存报告，全程约 3-5 分钟。可实时看到进度。</p>
+            <p className="mt-1">搜索 → 抓取网页内容 → 信源质量评估 → AI 并行生成多章节 → 季节附录（可选）→ 保存报告，全程约 3-5 分钟。可实时看到进度。</p>
           </div>
           <div>
             <h4 className="font-bold text-gray-800">报告内容</h4>
-            <p className="mt-1">摘要、价值链、竞争格局、主要玩家、消费者行为与痛点、经营打法、品牌格局、渠道玩法、爆品与趋势、运营行动清单。</p>
+            <p className="mt-1">核心摘要、价值链、竞争格局、主要玩家、消费者行为、经营打法、品牌格局、渠道玩法、爆品趋势、来源分级。如开启季节分析，追加年度销售节奏、七区地域差异、备货库存策略。</p>
           </div>
         </div>
       </section>
