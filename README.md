@@ -24,7 +24,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/你的用户名/industry-insight.git
+git clone https://github.com/DNjoker/industry-insight.git
 cd industry-insight
 
 # 2. 安装前端依赖
