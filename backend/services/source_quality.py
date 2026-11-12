@@ -36,6 +36,29 @@ DOMAIN_AUTHORITY: dict[str, tuple[int, float]] = {
     "cicc.com": (1, 0.9),
     "gf.com.cn": (1, 0.8),
     "cmschina.com": (1, 0.8),
+    # Industry research institutions
+    "chinairn.com": (1, 0.85),        # 中研网
+    "iresearch.cn": (1, 0.85),        # 艾瑞咨询
+    "iresearch.com.cn": (1, 0.85),    # 艾瑞咨询
+    "iimedia.cn": (1, 0.8),           # 艾媒咨询
+    "qianzhan.com": (1, 0.8),         # 前瞻产业研究院
+    "askci.com": (1, 0.75),           # 前瞻网
+    # Official disclosure
+    "cninfo.com.cn": (1, 0.95),       # 巨潮资讯（A股/北交所信披）
+    "bse.cn": (1, 1.0),               # 北交所官网
+    # Financial media (additions)
+    "stcn.com": (1, 0.85),            # 证券时报
+    "cnstock.com": (1, 0.85),         # 上海证券报
+    "nbd.com.cn": (1, 0.8),           # 每日经济新闻
+    "hexun.com": (1, 0.75),           # 和讯
+    # E-commerce data / intelligence
+    "mktindex.com": (1, 0.7),         # 魔镜市场情报
+    "chanmama.com": (1, 0.7),         # 蝉妈妈
+    # Top-tier consulting
+    "deloitte.com": (1, 0.85),        # 德勤
+    "pwc.com": (1, 0.85),             # 普华永道
+    "mckinsey.com": (1, 0.9),         # 麦肯锡
+    "bain.com": (1, 0.85),            # 贝恩
     # Tier 2: industry media, mainstream portals
     "36kr.com": (2, 0.7),
     "iyiou.com": (2, 0.7),
@@ -54,6 +77,9 @@ DOMAIN_AUTHORITY: dict[str, tuple[int, float]] = {
     "linkshop.com": (2, 0.65),
     "cifnews.com": (2, 0.65),
     "dsb.cn": (2, 0.65),
+    "199it.com": (2, 0.7),            # 199IT 数据聚合
+    "qcc.com": (2, 0.7),              # 企查查
+    "tianyancha.com": (2, 0.7),       # 天眼查
     # Tier 3: self-media, forums, personal blogs
     "zhihu.com": (3, 0.4),
     "jianshu.com": (3, 0.3),
